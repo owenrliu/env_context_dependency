@@ -5,4 +5,4 @@ A full description and step-by-step tutorial is provided in `edm_analysis.html`,
 
 Please contact the author with any questions.
 
-![](./comp_her_context_w_icons.png)
+![](ccm_network_w_icons.png)
