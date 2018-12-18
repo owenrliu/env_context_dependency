@@ -14,28 +14,23 @@ csl: nature.csl
 ---
 
 ```{r global_options, include=F,message=F}
-require(knitr)
+library(knitr)
 knitr::opts_chunk$set(echo = FALSE,warning=FALSE,message = FALSE,results = 'asis')
 ```
 
 ```{r setup, include=FALSE,message=F}
 # Load required packages (if these are not installed on your system, use `install.packages()`)
-require(tidyverse)
-require(here)
-require(rEDM)
-require(igraph)
-require(quantreg)
-require(knitr)
-require(kableExtra)
-# require(png)
-# require(GGally)
-# require(ggalt)
-require(ggsci)
-require(sna)
-require(network)
-require(gridExtra)
-require(RANN)
-require(plot3D)
+library(tidyverse)
+library(here)
+library(rEDM)
+library(igraph)
+library(quantreg)
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(RANN)
+library(plot3D)
+library(ggsci)
 
 # plot theme
 plot_theme <-   theme_minimal()+
