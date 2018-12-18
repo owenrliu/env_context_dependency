@@ -1,0 +1,1148 @@
+---
+title: "Environmental Context Dependency in Species Interactions"
+subtitle: "Empirical dynamic modelling analysis"
+author: "Owen Liu"
+date: "updated December 17, 2018"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+bibliography: citation_bibtex.bib
+editor_options: 
+  chunk_output_type: inline
+csl: nature.csl
+---
+
+```{r global_options, include=F,message=F}
+require(knitr)
+knitr::opts_chunk$set(echo = FALSE,warning=FALSE,message = FALSE,results = 'asis')
+```
+
+```{r setup, include=FALSE,message=F}
+# Load required packages (if these are not installed on your system, use `install.packages()`)
+require(tidyverse)
+require(here)
+require(rEDM)
+require(igraph)
+require(quantreg)
+require(knitr)
+require(kableExtra)
+# require(png)
+# require(GGally)
+# require(ggalt)
+require(ggsci)
+require(sna)
+require(network)
+require(gridExtra)
+require(RANN)
+require(plot3D)
+
+# plot theme
+plot_theme <-   theme_minimal()+
+  theme(text=element_text(family="sans",size=12,color="black"),
+        legend.text = element_text(size=14),
+        axis.title=element_text(family="sans",size=14),
+        axis.text=element_text(family="sans",size=8),
+        strip.background = element_rect(colour="black"),
+        panel.border = element_rect(color="black",fill=NA))
+
+theme_set(plot_theme)
+```
+
+## Introduction
+
+This document accompanies the manuscript "Environmental Context Dependency in Species Interactions." The following analyses lay out the step-by-step building blocks of the empirical dynamic modeling approach [@Deyle2016; @Chang2017] that produced the final version of the analyses in the paper, and is meant to be an accessible guide for those interested in deep understanding and replication of the methods. The figures used in the published manuscript are included here.
+
+In the analyses that follows, in each step that involves a new type of EDM method, its logic will be briefly described.  However, keep in mind that the basic theory behind each individual method is the same: We use some dynamic information (from single or multiple time series) to reconstruct a shadow attractor/manifold, and then use the properties of that manifold to make predictions or estimate interactions. Short comments on the results of each step of analysis are included, but please see the main text for a more formal treatment of the Methods and a full interpretation and discussion of the results.
+
+## 1. Variables in the Data
+
+### The San Nicolas Island Dataset
+
+San Nicolas Island is a small, remote island situated about 100 kilometers offshore from southern California.  The island itself is small, about 14 kilometer long and 5 km wide. The data in the analysis is from a sampling station on the western end of San Nicolas Island. The benthic monitoring data herein have been collected more or less every six months for more than 35 years by the USGS and its Western Ecological Research Center (USGS-WERC), and in 2013 the datasets were made available publicly through Ecological Archives[@Kenner2013]:
+
+Michael C. Kenner, James A. Estes, M. Tim Tinker, James L. Bodkin, Robert K. Cowen, Christopher Harrold, Brian B. Hatfield, Mark Novak, Andrew Rassweiler, and Daniel C. Reed. 2013. A multi-decade time series of kelp forest community structure at San Nicolas Island, California (USA). Ecology 94:2654. http://dx.doi.org/10.1890/13-0561.1
+
+We use data from one particular monitoring site, termed the "West End". At the West End there are 10 permanent transects, which we use as time series data of species' densities. See Kenner et al.[@Kenner2013; @Kenner2018] for full description of monitoring methods.
+
+### Physical Oceanographic Data
+
+A body of other research has established that a combination of physical forcing (waves, storms), temperature, and lower frequency climate modes (e.g., El Ninos) have an important influence on the dynamics of kelp forests [@Reed2011; @Cavanaugh2011; @Bell2015;@Young2015;@Bell2018]. With these data, we can draw connections between the physical variables and the species interactions in our constrained trophic web.
+
+We have four datasets, already processed into the same time frame (periods) as the SNI benthic monitoring data. For details and code on data preparation, see scripts in the `data` folder in this repository. To the extent possible, these data are analyzed beginning from their most raw form (i.e., as originally downloaded/obtained).
+
+* **[The Multivariate ENSO index (MEI)](http://www.esrl.noaa.gov/psd/enso/mei)**
+    + The first principal component of a composite set of physical parameters
+    + Positive values of the MEI index are generally associated with El Nino conditions, decreases in wind-driven upwelling, warmer surface waters and nutrient-poor conditions
+    + Variable here is the average index value for the four months preceding each Spring or Fall monitoring period (i.e., December to March or June to September, respectively)
+    
+* **[The Pacific Decadal Oscillation index (PDO)](http://research.jisao.washington.edu/pdo/)**
+    + Leading empirical orthogonal function (EOF) of monthly sea surface temperature anomalies (SST-A) over the North Pacific (poleward of 20° N) after the global average sea surface temperature has been removed
+    + Positive PDO values indicate warmer SST, and nutrient-poor conditions along the western coast of the contiguous United States
+    + Aggregated and averaged the same way as MEI
+    
+* **[The North Pacific Gyre Oscillation (NPGO)](http://www.o3d.org/npgo/)**
+    + From [@DiLorenzo2008]
+    + Climate pattern that emerges as the 2nd dominant mode of sea surface height variability (2nd EOF SSH) in the Northeast Pacific
+    + Better correlated with salinity, nutrients, and chlorophyll than PDO, showing forcing for the planktonic community
+    + Strong predictor of upwelling cells south of 38 deg N
+    + Aggregated and averaged the same way as MEI and PDO
+    
+* **Sea surface temperature (SST)**
+    + Two sources (to fill in data gaps):
+      + Sea surface temperature data directly from Begg Rock and San Nicolas Island buoys, from the [Coastal Data Information Program (CDIP)](http://cdip.ucsd.edu)
+      + NOAA's [Optimally Interpolated Sea Surface Temperature](https://www.ncdc.noaa.gov/oisst)
+    + Similar to the above, value is an average SST for the four months preceding each period
+
+* **Maximum significant wave height (Hs)**
+    + Modeled wave height data from the [California Coastal Data Information Program](http://cdip.ucsd.edu/) (CDIP MOPv1.1[@OReilly2016]) and the [Geophysical Fluid Dynamics Laboratory](http://cmgwindwave.usgsportals.net/)
+    + The first time series (CDIP) was the primary dataset, with the GFDL model data used for minor gap-filling.
+    + Signficant wave height is defined as the average height, in meters, of the one third highest waves in the record
+    + Instead of an average, value here is the maximum significant wave height of the four months preceding each period. This is meant to capture any large storm events, as well as general level of physical disturbance
+
+Unlike the biological data, where there are unique spatial replicates, the physical data have only one value for each of the 63 monitoring periods, and hence their values are replicated of the 10 monitoring transects.
+
+#### Note about data processing
+
+Usual best practice for EDM is to create normalized time series, so that state-space reconstructions are not distorted by differences in orders of magnitude between variables[@Chang2017]. In addition, in this study we concatenate each species/station/swath time series into one long time series for each species, while preserving a time indicator (variable `period`) and a site identifier, to ensure that we do not "cross" the boundaries of replicate time series in analyses. Empirical dynamic modeling can use multiple spatial replicates in lieu of increased length of individual time series, to maximize the dynamic information that can be drawn from the system [@Hsieh2008;@Clark2015;@Chang2017].
+
+We join the monitoring and physical datasets and normalize all time series (see `produce_final_data.R`):
+
+```{r load data, message=FALSE,echo=F}
+source("data/data preparation scripts/produce_final_data.R")
+```
+
+```{r list of variables,echo=F,fig.cap="List of variables"}
+tibble(Variable=colnames(westend),Description=c("Monitoring Transect","Monitoring Period","Laminaria Normalized Density",
+                                            "Macrocystis pyrifera >1m Normalized Density","Pterygophora Normalized Density",
+                                            "Strongylocentrotus purpuratus Normalized Density","Mesocentrotus franciscanus Normalized Density",
+                                            "Macrocystis pyrifera <1m Normalized Density","Normalized Multivariate ENSO Index",
+                                            "Normalized Pacific Decadal Oscillation","Normalized North Pacific Gyre Oscillation",
+                                            "Normalized Maximum Significant Wave Height","Normalized Sea Surface Temperature")) %>%
+  knitr::kable()
+```
+
+
+```{r mean density over time, echo=F,message=F}
+# Species naming key for use in plotting
+namekey <- tibble(dataset=c(rep("Benthic density",6),rep("Physical",5)),short=names(westend[3:13]),
+                  long=c("Laminaria","Macrocystis >1m","Pterygophora","Purple urchin","Red urchin","Macrocystis <1m","Multivariate ENSO Index","Pacific Decadal Oscillation","North Pacific Gyre Oscillation","Significant Wave Height","Sea Surface Temperature"),plotting=c("L. far","M. pyr","P. cal","S. pur","M. fra","M. pyr (j)","(P) MEI","(P) PDO","(P) NPGO","(P) SWH","(P) SST"))
+
+namekey <- bind_rows(namekey, data_frame(long="NA",dataset="NA",short="const",plotting="Constant")) %>%
+  
+  # define column "plotting" as a factor so we can later control plotting order on figures
+  mutate(plotting=factor(plotting,levels=c("(P) MEI","(P) PDO","(P) NPGO","(P) SWH","(P) SST","M. pyr","M. pyr (j)","L. far","P. cal","S. pur","M. fra","Constant")),
+         long=factor(long,levels=c("Macrocystis >1m","Macrocystis <1m","Pterygophora","Laminaria","Purple urchin","Red urchin","Multivariate ENSO Index","Pacific Decadal Oscillation","North Pacific Gyre Oscillation","Significant Wave Height","Sea Surface Temperature","Constant")))
+
+# key relating monitoring period to its year/month
+period.key <- data_frame(year=rep(1980:2014,each=12),month=rep(1:12,35),period=c(rep(NA,8),rep(1,4),rep(2:69,each=6)))
+periods.first <- period.key %>% 
+  distinct(period,.keep_all=T) %>%
+  mutate(day=1) %>% #assume all monitoring done on first day of month
+  unite(date_str,year,month,day,sep="-") %>%
+  mutate(date_str=ymd(date_str))
+
+westend.long <- westend %>%
+  gather(key=spp,value=dens,-period,-site,na.rm=T) %>%
+  left_join(namekey, by=c("spp"="short"))
+westend.meandens <- westend.long %>%
+  group_by(spp,period,long) %>% 
+  summarise(meandens=mean(dens,na.rm=T),sddens=sd(dens,na.rm=T))%>%
+  mutate(lower=meandens-sddens,upper=meandens+sddens)%>%
+  left_join(periods.first,by="period") %>%
+  ungroup()
+
+# position adjustment for visual clarity
+pd <- position_dodge(width=100)
+westend.mean_dens_plot <- westend.meandens %>%
+  filter(spp %in% c("mac","red","pter","ymac","purp","lam")) %>%
+  mutate(type=ifelse(spp %in% c("mac","ymac","pter","lam"),"algae","urchin")) %>%
+  ggplot(aes(x=date_str,y=meandens,col=long,linetype=type))+
+      geom_hline(yintercept=0)+
+      geom_line(lwd=2,alpha=0.8,position=pd)+
+      geom_pointrange(aes(ymin=lower,ymax=upper),size=0.3,position=pd)+
+      xlab("Year")+ylab("Normalized Density")+
+      scale_color_manual(values=c("navyblue","gray50","darkgreen","darkcyan","mediumpurple4","darkred"),
+                         guide=guide_legend(title="Species",override.aes = list(size=1)))+
+      guides(linetype="none")+
+      theme(text = element_text(color="black",size=16),
+            axis.title=element_text(size=10),
+            legend.position = c(0.15,0.7),
+            legend.text = element_text(color="black",size=10),
+            panel.border = element_blank())
+rm(pd,westend.long)
+```
+
+```{r physical variables timeseries,fig.height=9,fig.width=7}
+mei.pdo.npgo.ts.plot <-westend %>%
+  ungroup()%>%
+  slice(1:63)%>%
+  select(period,mei,pdo,npgo)%>%
+  gather("driver","value",mei:npgo,-period)%>%
+  left_join(namekey, by=c("driver"="short"))%>%
+  left_join(periods.first,by="period") %>%
+  ggplot(aes(date_str,value,col=driver))+
+  geom_line(lwd=1.5)+
+  geom_hline(yintercept=0,linetype=2,col="black")+
+  labs(title="Physical Drivers: Climate Modes",x="Year",y="Normalized Index Value")+
+  theme(axis.title=element_text(size=10))
+sst.waves.ts.plot <-westend %>%
+  ungroup()%>%
+  slice(1:63)%>%
+  select(period,sst,waves)%>%
+  gather("driver","value",sst,waves,-period)%>%
+  left_join(namekey, by=c("driver"="short"))%>%
+  left_join(periods.first,by="period") %>%
+  ggplot(aes(date_str,value,col=driver))+
+  geom_line(lwd=1.5)+
+  geom_hline(yintercept=0,linetype=2,col="black")+
+  labs(title="Physical Drivers: Temperature and Disturbance",x="Year",y="Normalized Index Value")+
+  theme(axis.title=element_text(size=10))
+lay <- rbind(1,2,3,3)
+grid.arrange(mei.pdo.npgo.ts.plot,sst.waves.ts.plot,westend.mean_dens_plot,layout_matrix=lay)
+rm(lay,westend.mean_dens_plot,sst.waves.ts.plot,mei.pdo.npgo.ts.plot)
+```
+
+***
+
+## 2. Establishing Univariate Predictability and Nonlinearity
+
+For each of these time series, we have a few steps to see if they seem appropriate to analyze together with EDM techniques [@Chang2017]. We want to be careful that our state space reconstructions are reliable and represent valid manifolds. In other words, we don't want to rely on simple cross-correlation or the prior knowledge that all these data were collected around the same locations at around the same times. We want evidence that:
+
+1. Variables can be probably embedded (i.e., they show evidence of limited system dimensionality)
+2. Variables display state-dependent (nonlinear) dynamics, and therefore that nonlinear (EDM) methods are appropriate for analysis of these data
+
+First, we use simplex projection to get a sense of system dimensionality for each variable, which will also give us an idea of the appropriate embedding dimension to use in later analyses. Then, we explicitly look for evidence of state-dependence and nonlinear dynamics with a prediction horizon test and S-maps.
+
+***
+```{r time series segments, include=F}
+# segments of the time series (which rows of the data are individual transects?)
+westend_segs_sites <- westend %>%
+  ungroup() %>%
+  mutate(ind = row_number()) %>% 
+  group_by(site) %>%
+  summarise(first=first(ind),last=last(ind))
+
+# Time series segments without site identifier. We'll need this later
+westend.segs <- select(westend_segs_sites,-site)
+
+# species in the study
+study_spp <- c("red","purp","lam","pter","mac","ymac")
+# physical variables in the study
+phys.vars <- c("mei","pdo","npgo","waves","sst")
+```
+
+### Simplex Projection and Embedding Dimensions
+
+For each species/variable separately, we will search for signals of deterministic behavior using simplex projection. In simplex projection, we first reconstruct a shadow attractor in *E* dimensions, where *E* is the number of variables, or number of progressive lags of a single variable used in the reconstruction. *E* is called the __*embedding dimension*__. The *E*-length vectors, for example $\it{\bf{x_{t}}} = <x_t,x_{t-1},x_{t-2}>$ are points on the attractor, and the set of *E*-length vectors used for the reconstruction is called the __*library*__. To predict $\it{\bf{x_{t+1}}}$, the simplex algorithm finds the *E* +1 nearest neighbors of $\it{\bf{x_{t}}}$ in the state space, and the prediction $\it{\bf{\hat{x}_{t+1}}}$ is the average of the nearest neighbors' values at $\it{t+1}$, weighted by their Euclidean distance from $\it{\bf{x_{t}}}$ at $\it{t}$. This is the essence of simplex projection: a forecast for a given point in state space is surmised from the forward trajectories of observed nearby points.
+
+In descriptive terms, this is akin to asking, "When the system has been in a state like this before, what happened next?" For example, if we are interested in predicting *Macrocystis* density next year, we might take the current three-year density trend (this year, last year, and the year before, *E*=3) and compare it to a subset of times in the past when successive three-year dynamics looked similar to that set of points. Our prediction, logically, would be the average of that subset, projected foreward one year and weighted by their similarity to the current trend.
+
+By varying the value of *E*, we can determine what the best embedding dimension is for each variable in our analysis, essentially a proxy for the number of variables that best "unfolds" or best represents the shadow attractor. We can measure the skill of an embedding by comparing the estimated forecasts $\it{\bf{\hat{x}_{t+1}}}$ with the observed values $\it{\bf{x_{t+1}}}$, and we report it with $\it{\bf{\rho}}$, the Pearson correlation coefficient between predictions and observations. To avoid in-sample fitting, we use a leave-one-out cross-validation scheme, removing one vector at a time from the library, and predicting its dynamics from the other library vectors. From this exercise, we save the best embedding dimension *E* for each variable, to use in following steps.
+
+```{r univariate simplex westend,fig.width=7,echo=F}
+# List to store output of simplex projection
+westend.simp.list <- list()
+
+# Run simplex projection for each species at each site, and plot output
+for(i in 1:length(study_spp)) {
+  spp <- study_spp[i]
+  dat <- westend %>% select(matches(spp)) %>% as.data.frame()
+  out <- simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),E=2:15,silent=T) %>%
+    mutate(spp=namekey$long[match(spp,namekey$short)])
+  westend.simp.list[[spp]] <- out
+}
+
+# plot
+bind_rows(westend.simp.list) %>%
+  ggplot(aes(E,rho,color=spp))+
+  geom_line(size=2)+
+  facet_wrap(~spp,nrow=2,scales="free_y")+
+  labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
+  scale_x_continuous(breaks=seq(0,12,by=2))+
+  scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
+  guides(color=F)
+
+# Save best embedding dimensions
+westend.bestE <- sapply(westend.simp.list,function(x) {
+  temp <- x %>% filter(!is.na(rho))
+  temp$E[temp$rho==max(temp$rho)]
+})
+
+rm(spp,dat,out)
+
+# Run simplex for each physical variable
+phys.simp.list <- list()
+for(i in 1:length(phys.vars)) {
+  ind <- phys.vars[i]
+  dat <- westend %>% select(matches(ind)) %>% as.data.frame()
+  out <- simplex(as.numeric(dat[,1]),lib=c(1,63),E=2:10,silent=T) %>%
+    mutate(spp=namekey$long[match(ind,namekey$short)])
+  phys.simp.list[[ind]] <- out
+  westend.simp.list[[ind]] <- out
+}
+
+# plot
+bind_rows(phys.simp.list) %>%
+  ggplot(aes(E,rho))+
+  geom_line(size=2)+
+  facet_wrap(~spp,nrow=2,scales="free_y")+
+  labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
+  scale_x_continuous(breaks=seq(0,10,by=2))+
+  guides(color=F)+
+  theme(strip.text = element_text(size=8))
+
+rm(ind,dat,out)
+phys.bestE <- sapply(phys.simp.list,function(x) {
+  temp <- x %>% filter(!is.na(rho))
+  temp$E[temp$rho==max(temp$rho)]
+})
+
+westend.bestE <- c(westend.bestE,phys.bestE)
+```
+
+***
+
+### Prediction Horizon test
+
+We also want to look at prediction decay for each variable, which is one piece of evidence that a dynamic system is nonlinear. Using the best *E* identified in the previous step, we attempt to make predictions increasing far into the future, instead of just one period ahead. A nonlinear system should show decreasing predictive power with increasing prediction horizon[@Sugihara1994]. This phenomenon is a property of deterministic chaos and is analagous to the "butterfly effect", where in a nonlinear system, trajectories in state-space are expected to diverge over time. To examine this effect, we hold *E* constant, and proceed with simplex projection as before, but varying the prediction horizon, $t_p$ (i.e., how many steps ahead we try to predict).
+
+```{r prediction horizon test,message=F,echo=F,fig.width=7,echo=F}
+# List to hold prediction horizon results
+westend.tp.list <- list()
+
+par(mfrow=c(3,2))
+for(i in 1:length(study_spp)) {
+  spp <- study_spp[i]
+  dat <- westend %>% select(matches(spp)) %>% as.data.frame()
+  out <- simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),silent=T,E=westend.bestE[spp],tp=1:10) %>%
+    mutate(spp=namekey$long[match(spp,namekey$short)])
+  westend.tp.list[[spp]] <- out
+}
+
+#Plot time horizon vs. rho
+bind_rows(westend.tp.list) %>%
+  ggplot(aes(tp,rho,color=spp))+
+  geom_line(size=2)+
+  facet_wrap(~spp,nrow=2,scales="free_y")+
+  labs(x="Time to Prediction",y=expression(paste("Skill, ",rho)))+
+  scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
+  scale_x_continuous(breaks=seq(0,10,by=2))+
+  guides(color=F)
+
+rm(spp,dat,out)
+```
+
+The prediction horizon effect check is promising overall, as most variables decline in predictive ability with increasing time horizon. For *Pterygophora californica*, *Macrocystis* juveniles, and *Laminaria*, there is some evidence of cyclic behavior, in that dynamics are more predictable 6 periods in the future than 3 or 4 periods.
+
+***
+
+### S-maps for Each Species
+
+All of the variables show a decent ability to self-predict, as shown by simplex projection, although some variables require rather high embedding dimensions, indicative of higher-dimensionality dynamics. However, the butterfly effect check is evidence of potential nonlinearity, as all variables decline in predictive ability with time horizon.
+
+We can look for further evidence of nonlinearity with S-maps. S-maps is short for "sequentially weighted global linear maps", and it is similar to simplex projection, except instead of using just the *E* +1 nearest neighbors to make forecasts, S-maps uses all library vectors, and exponentially weights them by their distance to the prediction vector before using linear regression to make a forecast. A parameter, $\it{\bf{\theta}}$, tunes how much greater weight is given to nearby points. If $\it{\bf{\theta}}=0$, all library vectors are weighted equally, and the resulting model is just a vector autogressive (VAR) model of order *E*. However, as $\it{\bf{\theta}}$ is tuned above 0, nearby points in state-space are given more weight in forecasts. Therefore, if model skill $\it{\bf{\rho}}$ increases with increasing $\it{\bf{\theta}}$, it is evidence of nonlinear, state-dependent dynamics.
+
+For a more formal description of the S-maps procedure, see @Sugihara1994 and @Deyle2016.
+
+As a side note, with $\it{\bf{\theta}}>0$, although the set library vectors remains constant, the *weights* given to library vectors for regression is specific to each point in state-space, and therefore a separate linear map is created for each predicted vector. This is why the procedure is called "sequentially weighted global linear maps". Conceptually, as the dynamic system moves along the surface of the attractor, S-maps sequentially computes linear maps to the next point based on nearby points. Mathematically, when making a prediction for a target point $\it{\bf{x^*}}$, each library vector (point on the attractor) $\it{\bf{x}_{k}}$ is given a weight
+$$w_{k}=exp\frac{-\theta\mid\mid \it{\bf{x}_{k}}- \it{\bf{x^*}}\mid\mid}{\bar{d}}$$ 
+where $\mid\mid \it{\bf{x}_{k}}- \it{\bf{x^*}}\mid\mid$ is the Euclidean distance between the library and target vector, and $\bar{d}$ is the average distance to all library vectors. This weighting is what allows the tuning of nonlinearity by changing the single value $\theta$.
+
+For prediction of each variable using S-maps, we build an attractor for each species using the optimal embedding dimension, *E*, found through our simplex projection above, and we plot the tuning parameter $\it{\bf{\theta}}$ against $\it{\bf{\rho}}$ to investigate whether local, state-dependent weighting of library vectors increases predicability, which would be evidence of nonlinear dynamics.
+
+```{r univariate s_maps westend,fig.width=7,echo=F}
+westend.smap.list <- list() # list to store output
+
+par(mfrow=c(3,2))
+for(i in 1:length(study_spp)) {
+  spp <- study_spp[i]
+  dat <- westend %>% select(matches(spp)) %>% as.data.frame()
+  out <- s_map(as.numeric(dat[,1]),lib=as.matrix(westend.segs),E=westend.bestE[spp],silent=T) %>%
+    mutate(spp=namekey$long[match(spp,namekey$short)])
+  westend.smap.list[[spp]] <- out
+}
+
+bind_rows(westend.smap.list) %>%
+  ggplot(aes(theta,rho,color=spp))+
+  geom_line(size=2)+
+  facet_wrap(~spp,nrow=2,scales="free_y")+
+  labs(x=expression(paste("Nonlinearity (",theta,")")),y=expression(paste("Skill, ",rho)))+
+  scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
+  scale_x_continuous(breaks=seq(0,8,by=2))+
+  guides(color=F)
+
+rm(spp,dat,out)
+```
+
+All variables show significantly improved predictive ability with increased $\theta$, suggesting nonlinear dynamics. Together, the simplex, prediction horizon, and S-map results suggest our approach is valid--variables are predictable and nonlinear.
+
+***
+
+## 3. Convergent Cross Mapping
+
+So far, we have established the predictability and nonlinearity of single variables. In this step, we relate the variables to each other, asking whether there is evidence of causal linkages. We do not assume causal interactions---we test for them.
+
+Generalizations of Takens' theorem indicate that if two variables (in our case, species or physical variables) are part of the same dynamic system, their individual dynamics should reflect their relative causal influence [@Sugihara2012; @Deyle2013,@Ye2015,@Clark2015]. In other words, if one variable (for example, giant kelp), is causally forced by another (sea urchins), that forcing should leave a signature on the giant kelp time series. Convergent cross mapping (CCM) tests for causation by using the attractor/manifold built from the time series of one variable to predict another. CCM works just like univariate simplex projection that we did in Step 1, except that separate variables are used for library and prediction vectors. In addition, we normally predict contemporaneous values of the other variable, instead of projecting one step forward (prediction horizon $t_{p}=0$). If the attractor can accurately (based on out-of-sample prediction skill, just as before) predict the dynamics of the second variable, we can claim that the second variable has a causal influence on the first.  In simple terms, the *causal effect of A on B is determined by how well B cross-maps A*. In this way, the inference from cross-mapping is the converse direction of causation. In our example, if sea urchins drive giant kelp,the dynamic information from the urchin time series should be reflected in the kelp dynamics, and kelp should significantly cross-map the urchins.
+
+Cross-mapping can distinguish unidirectional forcing (A forces B but B does not force A) from bi-directional (A and B force each other). It can also resolve transitive causal chains (A causes B causes C, see Fig. 4 in @Sugihara2012). To look for a causal signal, we plot predictive skill  $\it{\bf{\rho}}$ against library size (the number of embedded vectors used to construct the attractor). There are two criteria for CCM to establish causality: 
+
+* First, and most obviously, predictive cross-map skill using all available data should be significantly greater than zero. 
+* Second, that predictability should be convergent.  Convergence means that cross-mapped estimates improve with library length, because the attractor is more fully resolved and therefore estimation error should decline. Convergence is key to distinguishing causation from simple or spurious correlation [@Sugihara2012]. If two variables are spuriously correlated and not causally linked, CCM should fail to satisfy this second criterion.
+
+It is also generally true that relative cross-mapping skill of a given variable equates to the strength of causal linkages. That is, if species A cross-maps species B with greater skill than it cross-maps species C, it would suggest that species B is the stronger forcing influence on A.
+
+The CCM algorithm uses a random sampling method to test multiple "versions" of each library size, sampling a subset from the supplied library vectors to establish confidence intervals around prediction skill. We again use leave-one-out cross-validation to prevent in-sample fitting.
+
+***
+
+### Example CCM
+
+Each individual CCM analysis involves looks something like this:
+
+```{r ccm example}
+tempE <- westend.bestE['red']
+temp <- ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 'mac',target_column = 'red',lib_sizes = c(10,25,50,75,100,125,150,200,300,400,500),num_samples=100,replace=T,silent=T,RNGseed = 41389)
+
+mac_xmap_red <- temp %>%
+  group_by(lib_size)%>%
+  summarise(rhomean=mean(rho,na.rm=T),upper=quantile(rho, 0.9),lower=quantile(rho, 0.1))%>%
+  mutate(lower=pmax(0,lower)) %>% 
+  ungroup()%>%
+  ggplot(aes(lib_size,rhomean))+
+  geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.3,fill="red")+
+  geom_line(color="darkorchid3")+
+  labs(x="Library Size",y=expression(paste(rho, " (predictive skill)")),title="Macrocystis xmap Red Urchin")
+
+mac_xmap_red
+```
+
+In this example, we are asking whether there is evidence that *M. franciscanus* drives *Macrocystis* dynamics, and we evaluate that using library vectors from the *Macrocystis* time series to try to predict densities of *M. franciscanus*. In this case, the answer is yes: there is evidence that *M. franciscanus* drives *Macrocystis*, because the above signal is both significantly greater than zero, and is convergent.
+
+Now we apply the above process to all possible species interactions and environment-species forcings.
+
+```{r ccm all species and physical vars, echo=F,warning=F,fig.width=7}
+# Rows hold predicted variables, columns hold forcing variables. There are more columns than rows since the physical variables are included as potential forcing factors.
+n_col <- dim(westend)[2]-2
+n_row <- dim(westend)[2]-7
+col_names <- colnames(westend)[3:(n_col+2)]
+row_names <- colnames(westend)[3:(n_row+2)]
+westend.xmap_mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
+
+## CCM causation criterion 1: cross-map skill greater than zero
+# matrix to store a bootstrapped p-value, measuring the probability that a given xmap is greater than zero (calculated as 1 minus the number of positive results for rho divided by the number of iterations)
+westend.p1.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
+
+## CCM causation criterion 2: evidence for convergence
+# similarly, matrix to store a bootstrapped p-value, this time a t-test value between library size 10 and library size 500, to see if the rho at large library is significantly greater than the rho at small library size (i.e., looking for convergence).
+westend.p2.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
+
+# if both p1 and p2 are positive, indicate overall significant causal signal
+westend.ptot.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
+
+## Run CCM for each combination of variables
+for(i in 1:n_row) {
+  for(j in 1:n_col) {
+    if(i != j) {
+      # remember, we use the best embedding dimension for the target variable (the variable we're cross-mapping to, i.e. the putative forcing variable)
+      tempE=westend.bestE[col_names[j]]
+      temp <- ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 2+i,target_column = 2+j,lib_sizes = c(10,500),num_samples=100,replace=T,silent=T,RNGseed = 41389)
+      
+     # mean rho at library size 500
+      rhomeans <- temp %>% ccm_means()
+      westend.xmap_mat[i,j] <- rhomeans$rho[rhomeans$lib_size==500]
+      
+      # first p-value (is cross map skill greater than zero? at library size 500)
+      p1 <- temp %>% filter(lib_size==500) %>% 
+        mutate(pos=ifelse(rho>0,1,0)) %>%
+        summarise(p=(1-sum(pos)/n()))
+      westend.p1.mat[i,j] <- as.numeric(p1)
+      
+      # second p-value (rho at lib-size 500 greater than rho at lib-size 10? By more than 0.1?)
+      p2 <- t.test(temp$rho[temp$lib_size==10],temp$rho[temp$lib_size==500])$p.value
+      if((rhomeans$rho[rhomeans$lib_size==500]-rhomeans$rho[rhomeans$lib_size==10])<0.1) p2 <- 1
+      westend.p2.mat[i,j] <- as.numeric(p2)
+      
+      # overall significance (both p1 and p2 signficant at alpha 0.05)
+      westend.ptot.mat[i,j] <- ifelse(p1<0.05 & p2<0.05,1,0)
+    }
+  }
+}
+rm(n_col,n_row,col_names,row_names,p1,p2,tempE,temp,rhomeans)
+
+# keep only signficant cross-mappings
+westend.xmap_mat <- westend.xmap_mat*westend.ptot.mat %>% as.data.frame()
+westend.xmap_rast <- westend.xmap_mat %>% 
+  mutate(predictee=row.names(westend.xmap_mat)) %>% 
+  gather(key=predictor,value=rho,-predictee)
+
+# If rho is zero, replace with NA (no significant causal signal)
+westend.xmap_rast$rho[westend.xmap_rast$rho==0] <- NA
+
+# Names for plotting to distinguish biological and physical variables
+westend.xmap_rast <- westend.xmap_rast %>% 
+  mutate(force.name=namekey$plotting[match(predictor,namekey$short)]) %>%
+  mutate(pred.name=namekey$plotting[match(predictee,namekey$short)])
+
+## plot
+westend.xmap_all_plot <- ggplot(westend.xmap_rast,aes(x=force.name,y=pred.name,fill=rho)) +
+  geom_raster() +
+  scale_fill_gradient(low = "#9AFF9A", high = "#548B54", space = "Lab", na.value = "grey50", 
+      guide = "colourbar",limits=c(0,0.8),breaks=c(0.2,0.4,0.6,0.8),name=expression(paste(rho, "(skill)"))) +
+  geom_text(aes(label=round(rho,2)),family="Arial")+
+  ggtitle("Kelp Forest Convergent Cross Mapping") +
+  xlab("Predictor (Forcing Variable)") +
+  ylab("Predicted Variable") +
+  theme(text=element_text(color="black"),
+        plot.background = element_rect(fill="white"),
+        axis.text=element_text(color="black"),
+    axis.text.x=element_text(angle = 90, hjust = 1,vjust=0.1),
+    panel.border = element_blank())
+
+westend.xmap_all_plot
+```
+
+The plot shows cross-mapped (predictor, or forcing) variables in the columns, while rows are predicted variables (i.e., columns cause rows). Gray indicates a lack of significant causal signal--failure to satisfy one of the above criteria--and darker colors represent higher cross-map skill.
+
+From this plot, we can make a few observations. The five physical forcing variables are represented in the first five columns, followed by the algae and urchin species. Many physical variables show causal relationships with kelp forest species, especially the North Pacific Gyre Oscillation and maximum wave height (physical disturbance), which show causal links to almost all the biological variables. The NPGO is cross-mapped well by the purple urchin *Strongylocentrotus purpuratus*, while both the NPGO and wave height show a strong influence on adult *Macrocystis* dynamics. So already we are seeing effects that we might expect based on known interactions between physical variables and biological dynamics [@Reed2011;@Bell2015].
+
+Additionally, adult *Macrocystis* itself seems to be the first or second most important driver of the dynamics of all the other species in the tropic web, supporting the decades of research showing the importance of giant kelp as a foundational species [@Graham2007c;@Dayton1985], but further suggesting that its dynamics fundamentally drive the dynamics of other species.  Juvenile, or sporophyte *Macrocystis*, on the other hand, is affected by most of the variables in the system, but does not itself strongly drive dynamics of other species, again an effect we would expect to find. In this system, *Pterygophora californica* also seems to be a strong causal driver of the dynamics of other species in the trophic web.
+
+Both sea urchin species are causally linked to *Macrocystis* density, and they also have a causal effect on one another. This analysis alone, however, does not yet tell us whether the bi-directional interaction between *S. purpuratus* and *M. franciscanus* represents apparent mutualism, apparent competition, or a mixture of both at different times. To further investigate the direction and magnitude of the species interactions themselves, we next build multivariate EDM models that explicitly measure dynamic species interaction strengths.
+
+***
+
+### Interaction Network
+
+The CCM results translated into an empirical interaction web looks like this:
+
+```{r network,fig.height=7,fig.width=7}
+## i graph
+# connections matrix for the network based on the CCM results above
+connect.mat <- t(westend.ptot.mat) %>% 
+  as.data.frame() %>%
+  mutate(mei=rep(0,nrow(.)),pdo=rep(0,nrow(.)),npgo=rep(0,nrow(.)),waves=rep(0,nrow(.)),sst=rep(0,nrow(.)))%>%
+  as.matrix()
+
+# edges (arrows) weighted based on CCM rho value
+edge.weight.mat <- t(westend.xmap_mat)%>%
+  as.data.frame() %>%
+  mutate(mei=rep(0,nrow(.)),pdo=rep(0,nrow(.)),npgo=rep(0,nrow(.)),waves=rep(0,nrow(.)),sst=rep(0,nrow(.)))%>%
+  as.matrix()
+edge.weight.mat[is.na(edge.weight.mat)]<-0
+
+names <- map_chr(colnames(connect.mat), function(x) as.character(namekey$plotting[match(x,namekey$short)]))
+names[6] <- "M. pyr\n(j)"
+names [7:11] <- c("MEI","PDO","NPGO","SWH","SST")
+
+# initiate the igraph
+g2 <- graph.adjacency(connect.mat)
+
+# Vertex labels
+V(g2)$name <-names
+
+# vector of node colors for plotting
+vert.cols <- c(rep("#238B45",3),rep("#BEBADA",2),"#238B45",rep("#8DD3C7",5))
+
+# weighted edges, with width and color
+edge.weights <- as.numeric(t(edge.weight.mat))[t(edge.weight.mat) != 0]*5
+E(g2)$width <- edge.weights
+col.1 <- adjustcolor("#99D8C9", alpha=0.8)
+col.2 <- adjustcolor("#006D2C", alpha=0.8)
+edge.pal <- colorRampPalette(c(col.1, col.2), alpha = TRUE)
+edge.pal <- edge.pal(100)
+edge.cols<-round((edge.weights-min(edge.weights))/(max(edge.weights)-min(edge.weights))*100) +1
+edge.cols <- edge.pal[edge.cols]
+
+# some edges must be curved to look okay in the graph
+curves <- rep(0,40)
+curves[c(1,4,13,17,18,21)] <-0.4
+curves[c(10,19)] <-0.3
+curves[20] <- -0.1
+curves[c(6,39)] <- 0.2
+
+#plot to file if uncommented
+plot(g2,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves,margin=0,vertex.size=20,rescale=T,edge.lty=1,edge.color=edge.cols,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="")
+```
+
+In this network, each node represents a variable. The maximum number of outgoing interactions is 5 (6 total biological variables minus the variable itself), and incoming is 10 (5 biological and 5 physical variables). Algae species are in dark green, while the two urchin species are in purple and the physical drivers are in blue-green. Again, we see here as above that young *Macrocystis* (denoted M. pyr (j))is forced by all other variables in the system, but in turn shows a causal forcing on only 3 of the 5 other biological variables, and its forcing of *S. purpuratus* is very weak. Again we can see that while the web is not entirely saturated, there are many unidirectional forcings, and a prevalence of bidirectional causation as well (A forces B *and* B forces A). The adult *Macrocystis* is causally connected to all variables in the analysis.
+
+***
+
+## 4. Multivariate Models Using CCM results
+
+Every EDM method we have used so far involves reconstructing an attractor in state-space and then examining that attractor to make predictions. In Step 2, we used single time series and their lags to build attractors, and examined the attractors for evidence of the degree of dimensionality, predictability, and nonlinearity. In Step 3, we built attractors from one species and searched for the signature of other species' dynamics encoded in those attractors, leading to inferences about causation.
+
+Multivariate models have the same structure, except instead of using single variables to reconstruct the attractors, we use contemporaneous values of multiple variables[@Deyle2016]. That is, instead of library vectors or points in state-space taking the form of, for example, $<x_t,x_{t-1},x_{t-2}>$, they now are formed in true multivariate space, e.g. $<Kelp_{t},Urchin_{t},Nutrients_{t}>$. Using the normalized time series, we will build library vectors that each include the variable we are trying to predict, as well as other causal variables illuminated by our CCM analysis from Step 3. Then we use S-maps as above to forecast the target variable using leave-one-out cross-validation.
+
+```{r causal vars fxn,message=F,echo=F}
+# Pull out causal vars from CCM for each species
+westend.causal.vars <- purrr::map(c("mac","purp","lam","ymac","red","pter"), function(x) {
+  westend.xmap_rast %>%
+    filter(predictee==x,!is.na(rho))->out
+  out <- c(x,out$predictor)
+  out
+})
+
+names(westend.causal.vars)=c("mac","purp","lam","ymac","red","pter")
+```
+
+***
+
+### Multivariate Attractors
+
+The multivariate models reconstruct attractors for each species based on their causally linked variables from CCM. A partial visualization of one of those attractors in state space might look something like this:
+
+```{r 3d plot,fig.height=4,fig.width=4,dpi=300}
+x <- westend$lam
+y <- westend$mac
+z <- westend$purp
+
+seg.start <- as.numeric(westend.segs[1,1])
+seg.end <- as.numeric(westend.segs[1,2])
+
+#smooth
+t <- 1:length(seg.start:seg.end)
+tt<-seq(1,length(seg.start:seg.end),len=500)
+
+xsmooth<-splinefun(t, x[seg.start:seg.end])(tt)
+ysmooth<-splinefun(t, y[seg.start:seg.end])(tt)
+zsmooth<-splinefun(t, z[seg.start:seg.end])(tt)
+
+xtemp <- x[seg.start:seg.end]
+ytemp <- y[seg.start:seg.end]
+ztemp <- z[seg.start:seg.end]
+
+# plot
+par(mai=c(0.1,0.1,0.1,0.1))
+scatter3D(xsmooth,ysmooth,zsmooth, col="gray30",
+          type="l",phi=40,theta=55,bty="b",xlab = "Laminaria", ylab = "Macrocystis", zlab = "Purple Urchin")
+points3D(xtemp,ytemp,ztemp,col="black",pch=19,cex=0.5,add=T)
+
+for(i in 2:5) {
+  seg.start <- as.numeric(westend.segs[i,1])
+  seg.end <- as.numeric(westend.segs[i,2])
+  
+  #smooth
+  t <- 1:length(seg.start:seg.end)
+  tt<-seq(1,length(seg.start:seg.end),len=500)
+  xsmooth<-splinefun(t, x[seg.start:seg.end])(tt)
+  ysmooth<-splinefun(t, y[seg.start:seg.end])(tt)
+  zsmooth<-splinefun(t, z[seg.start:seg.end])(tt)
+  
+  xtemp <- x[seg.start:seg.end]
+  ytemp <- y[seg.start:seg.end]
+  ztemp <- z[seg.start:seg.end]
+  
+  # plot
+  
+  scatter3D(xsmooth,ysmooth,zsmooth, col="gray30",
+            type="l",bty="b",add=T)
+  points3D(xtemp,ytemp,ztemp,col="black",pch=19,cex=0.5,add=T)
+}
+
+scatter3D(x[46],y[46],z[46],col="red",pch=19,cex=2,add=T)
+
+#manually find nearest neighbors to point 46
+temp <- westend %>% select(lam,mac,purp) %>% slice(1:315) %>% mutate(id=row_number()) %>%
+  filter(!is.na(lam))
+tempnn <-nn2(temp[,1:3],k=4)$nn.idx %>% as.data.frame()
+names(tempnn) <- c("nn1","nn2","nn3","nn4")
+temp <- bind_cols(temp,tempnn)
+
+scatter3D(x[109],y[109],z[109],col="darkgreen",pch=19,cex=2,add=T)
+scatter3D(x[235],y[235],z[235],col="darkgreen",pch=19,cex=2,add=T)
+scatter3D(x[169],y[169],z[169],col="darkgreen",pch=19,cex=2,add=T)
+
+scatter3D(x[110],y[110],z[110],col="blue",pch=19,cex=2,add=T)
+scatter3D(x[236],y[236],z[236],col="blue",pch=19,cex=2,add=T)
+scatter3D(x[170],y[170],z[170],col="blue",pch=19,cex=2,add=T)
+#
+
+rm(xsmooth,ysmooth,zsmooth,xtemp,ytemp,ztemp,t,tt,seg.start,seg.end,x,y,z,temp)
+```
+
+Here we can see some apparent "states" of the *Laminaria*-*Macrocystis*-urchin dynamic system. There is some evidence here of three orthogonal states: when density of one of the species is well above its mean, the density of the other two are low. 
+
+It is important to note, however, that this attractor is not entirely "unfolded" in just these three dimensions---this is not quite a smooth multivariate attractor. This makes sense according to our previous CCM analysis. Although we cannot display more than three dimensions visually, our models in the previous step above suggest that any of these variables require more than three dimensions (embedding dimensions from Step 2) to make the most accurate predictions.
+
+However, as a further illustration of how predictions are made in EDM, consider the red dot in the figure above. If we are trying to predict the future trajectory for this ecosystem state (i.e., the combination, in this case, of the densities of the three species), we use multivariate projection. For simplex projection, we would find the closest neighbors in state-space to the point of interest (the green dots), and then our prediction is a weighted average of those neighbors projected forward one point in time (the blue dots). The average is weighted by the Euclidean distance of the green dots from the red dot. S-map forecasting works in a similar manner, except it uses all the points on the attractor (not just the nearest neighbors; see description of S-maps in Step 2).
+
+***
+
+### Dynamic Species Interaction Models
+
+```{r general smap model fxn, include=F}
+# Generalized function to build a multivariate S-map model. Function takes the data, a data frame of the segments (i.e., the denoting the different within-site swaths denoting breaks in the time series), the target species (the one for which we are building a model), and a character vector of the other, causal variables. The function returns the fitted model and the coefficients (i.e., the species interaction partials), the model statistics, and a box plot of the interactions coefficients for that species across all the data.
+
+smap_multi <- function(sitedat,sitesegs,species,causalvars) {
+  
+  full.mod <- block_lnlp(sitedat,lib=as.matrix(sitesegs),pred=as.matrix(sitesegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T)
+
+  opttheta <- full.mod$theta[full.mod$rho==max(full.mod$rho)]
+  
+  best.mod <- block_lnlp(sitedat,lib=as.matrix(sitesegs),pred=as.matrix(sitesegs),columns=causalvars,target_column = species,theta = opttheta, num_neighbors=0,method="s-map",save_smap_coefficients=T,silent=T)
+  
+  # gather and organize model output
+  t <- best.mod$model_output[[1]]$time
+  
+  coeff.names <- c(causalvars,"const")
+  # Save interaction coefficients
+  coeffs <- best.mod$smap_coefficients[[1]]
+  names(coeffs) <- coeff.names
+  
+  # # Model output-- time, observations, predictions. match time indicator with observations (one period ahead)
+  coeffs <- coeffs %>% mutate(time=t)%>%complete(time=full_seq(x=c(1,630),1)) %>% mutate(period=rep(1:63,10))
+  
+  # Save coefficient variances (sensu Deyle 2016; we have a nxn variance-covariance matrix for each estimated point, where n is the total number of causal variables for whom coefficients are estimated, plus the constant term)
+  # Variances for individual coefficients are the diagonals of each covariance matrix
+  coeffs.variances <- best.mod$smap_coefficient_covariances[[1]] %>%
+    purrr::map_dfr(function(x) {
+      # if no estimate, no variance associated with it (NULL)
+      if(is.null(x)) x <- matrix(NaN,nrow=length(coeff.names),ncol=length(coeff.names))
+      # pull out diagonal elements, add variable names
+      out <- t(diag(x)) %>% as.data.frame()
+      names(out) <- coeff.names
+      out
+      })%>%
+    
+    # add period identifier and overall time stamp
+    # mutate(time=t) %>% complete(time=full_seq(c(1,630),1)) %>% mutate(period=rep(1:63,10))
+    mutate(time=t)%>%complete(time=full_seq(x=c(1,630),1)) %>% mutate(period=rep(1:63,10))
+  
+  # long form for plotting, including variance
+  coeffs.long <- coeffs %>%
+    gather(key=effect,value=value,-period,-time,na.rm=T) %>%
+    left_join(namekey, by=c("effect"="short"))
+  
+  # long form variances
+  coeffs.variances.long <- coeffs.variances %>%
+    gather(key=effect,value=variance,-period,-time,na.rm=T) %>%
+    left_join(namekey,by=c("effect"="short"))
+  
+  coeffs.long <- coeffs.long %>%
+    left_join(coeffs.variances.long,by=c("time","period","effect","dataset","long","plotting")) %>%
+    # add standard deviation and +/- 95% CI (1.96*SD)
+    mutate(sd=sqrt(variance),upper=value+1.96*sd,lower=value-1.96*sd)
+  
+  # box plot of interactions
+  sppname <- species
+  int.box <- coeffs.long %>% filter(effect!='const')%>%
+    ggplot(aes(x=plotting,y=value))+
+    geom_boxplot() +
+    geom_hline(yintercept=0,linetype=2,col="gray40")+
+    xlab("Interacting Variable") +
+    ylab("Coefficient") +
+    ggtitle(paste("Interactive Effects on Dynamics of ",sppname))
+  
+  ## Outputs (to go in a list)
+
+  outlist <- list(model=best.mod,coeffs=coeffs,coeffs.variances=coeffs.variances,coeffs.long= coeffs.long,plot=int.box)
+  return(outlist)
+}
+```
+
+
+```{r apply multivariate models, include=F,warnings=F}
+# Apply to the West End data
+westend.multi.mods <- purrr::map(list("mac","purp","lam","ymac","red","pter"),function(x) {
+  smap_multi(westend,westend.segs,x,westend.causal.vars[[x]])
+})
+names(westend.multi.mods) <- c("mac","purp","lam","ymac","red","pter")
+```
+
+When we construct multivariate models for the six variables in the data based on their causal relationships, we get multivariate S-map models that perform well, displaying a high level of correlation between out-of-sample predictions and observed values, and relatively low mean absolute error (MAE).
+
+```{r model perf,echo=F}
+# collect model performance statistics
+westend.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria","Young Macrocystis","Red Urchin","Pterygophora"),
+                             Predictors=purrr::map(westend.causal.vars,.f=function(x){
+                               y=namekey$long[match(x,namekey$short)];paste(y,sep=",",collapse=", ")}),
+                             Theta = map_dbl(westend.multi.mods,function(x) x$model$theta),
+                             Rho = map_dbl(westend.multi.mods,function(x) x$model$rho),
+                             MAE=map_dbl(westend.multi.mods,function(x) x$model$mae),
+                             mod=c("mac","purp","lam","ymac","red","pter"))
+westend.model.perf %>% select(-mod) %>% 
+  kable("latex",col.names = c("Modeled Species","Predictors","$\\theta$","$\\rho$","MAE"),digits=3,escape=F) %>%
+  kable_styling(full_width = F) %>%
+  column_spec(1,bold=T)%>%
+  column_spec(2, width = "30em")
+```
+
+
+```{r all model effects join, echo=F,warning=F}
+# Join all coefficients
+all.mod.coeffs.long <- purrr::map(names(westend.multi.mods),function(x){
+  westend.multi.mods[[x]][["coeffs.long"]] %>% mutate(mod=x)
+  }
+  )%>%
+  bind_rows() %>%
+  mutate(mod_plotting_name = namekey$long[match(mod,namekey$short)])
+
+
+# assign interaction types: competition, herbivory (effect of urchins on algae), consumption (effect of algae on urchin), or growth
+algaes<-c("lam","mac","pter","ymac")
+urchins <- c("red","purp")
+combinations <- expand.grid(study_spp,study_spp) %>% 
+  rename(mod=Var1,effect=Var2) %>%
+  select(mod,effect)%>%
+  mutate(type = case_when(
+    mod ==   effect ~ "intraspecies",
+    mod == "mac" & effect == "ymac" ~ "intraspecies",
+    mod == "ymac" & effect == "mac" ~ "intraspecies",
+    mod %in% algaes & effect %in% algaes ~ "algal competition",
+    mod %in% urchins & effect %in% urchins ~ "urchin competition",
+    mod %in% algaes & effect %in% urchins ~ "herbivory",
+    mod %in% urchins & effect %in% algaes ~ "consumption",
+    TRUE ~ "NA"
+    ),
+    type=factor(type,levels=c("algal competition","urchin competition","herbivory","consumption","intraspecies")),
+    spp_type = case_when(
+      mod %in% algaes ~ "algae",
+      mod %in% urchins ~ "urchin",
+      TRUE ~ "none"
+    )
+  ) %>%
+  mutate_at(vars(mod,effect),as.character)
+
+# add rho label for facet plotting
+mod_rho_labels <- westend.model.perf %>%
+  mutate(label1="rho==",Rho_round=round(Rho,2))%>%
+  unite(label,label1,Rho_round,sep="",remove=F)%>%
+  select(mod,label)
+
+all.mod.coeffs.long %>%
+  #add the type of interaction
+  left_join(combinations,by=c("mod","effect"))%>%
+  left_join(mod_rho_labels,by="mod") -> all.mod.coeffs.long
+```
+
+***
+
+## 5. Results
+
+### Multivariate Model Output: Species interactions
+
+We can pull from the models every predicted interaction between species. These fitted interaction strengths are specifically the estimated effect of the density of one species on itself or another species, when forecasting one monitoring period (approximately six months) ahead. For example, each data point for *Pterygophora* in the *Macrocystis* model is the predicted effect of the current density of *Pterygophora* on the density of Macrocystis in the next monitoring period. Mathematically, each interaction measured is a partial derivative, or element of our locally calculated Jacobian matrices (the coefficients of our locally-weighted S-maps), estimating the effect of one species on another, $\delta N_{1}/\delta N_{2}$. The distributions of those interactions are shown for each separate species model in the figure below.
+
+```{r boxplot of species interactions, echo=F,warning=F,message=F,fig.height=8,fig.width=7.5}
+#
+effect_categories <- all.mod.coeffs.long %>%
+  #filter for just species (no physical vars yet)
+  filter(effect %in% study_spp) %>%
+  select(effect,plotting) %>%
+  distinct(effect,plotting) %>% .$plotting %>% as.character()
+
+# boxplot of all species interactions
+all.mod.coeffs.plot.box <- all.mod.coeffs.long %>%
+  #filter for just species (no physical vars yet)
+  filter(effect %in% study_spp) %>%
+  #plot
+  ggplot(aes(x=plotting,y=value,fill=type))+
+  geom_boxplot(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
+  stat_summary(fun.y=mean, colour="white", geom="point", 
+               shape=17, size=2,show.legend = FALSE)+
+  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  scale_x_discrete(breaks=effect_categories,limits=effect_categories,labels=effect_categories,drop=FALSE)+
+  geom_hline(yintercept=0,linetype=2)+
+  geom_text(aes(x=1.2,y=1.8,label=label),size=4, parse=T,check_overlap=TRUE,show.legend = FALSE)+
+  ylim(-2,2)+
+  coord_flip()+
+  labs(y="Estimated Interaction Coefficient",x="Interacting Species",title="Estimated Species Interactions in Multivariate Models")+
+  facet_grid(mod_plotting_name~.,scales="free",space="free")
+
+all.mod.coeffs.plot.box
+```
+
+These are box-and-whisker plots of estimated species interaction strengths from S-map models for the five focal species (panels top to bottom): *Macrocystis* adults, *Macrocystis* juveniles, *Pterygophora*, *Laminaria*, purple urchin, and red urchin. Each colored box represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on a modeled species (right y-axis) across all data for a given model (white triangles: mean; vertical lines: median; box: interquartile range; whiskers extend to data point at most $1.5*IQR$ from the box). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, *Strongylocentrotus purpuratus*; P cal., *Pterygophora californica*; M. pyr, *Macrocystis pyrifera*; M. fra, *Mesocentrotus franciscanus*; L. far, *Laminaria farlowii*.
+
+It is clear from the boxplots that fitted intra- and interspecific interactions display evidence of positive, negative, and neutral interactions. Over the range of conditions in the time series, each species variable with the exception of young *Macrocystis* has positive intraspecific effects; that is, each species’ density has a positive estimated effect on itself, a combination of survivorship and new recruitment. Relative to the magnitude of other interactions, this intraspecific effect is strongest in the two urchin species.
+
+The interactions of the urchin and algal species show evidence of herbivory (purple boxes). Both red and purple urchin density have predominantly negative effect on adult and juvenile *Macrocystis*, *Laminaria*, and *Pterygophora*, effects that were consistent with our hypotheses. However, the converse effects of algal density on urchin density (green boxes) are generally small, and not consistently positive.
+
+Few strong and consistent competitive interactions (red and orange boxes for urchin and algal competition, respectively) are observed in model estimates. Estimates of the interaction between the two urchin species are small and near zero. The interactions are small relative to other forcing factors in the urchin models, and are occasionally positive (apparent mutualism). Among the algal species, the clearest negative competitive effect is that of *Pterygophora* on adult *Macrocystis* (top panel). Other interactions are not always negative (competitive), and contrary to expectations, positive values were estimated for many interactions. *Pterygophora* has only intermittent negative effects on young *Macrocystis*, and *Pterygophora* and *Laminaria* display an apparent mutualism. Perhaps most surprisingly, *Macrocystis* does not display a consistent negative effect on *Pterygophora* or *Laminaria*, contrary to our hypothesis of *Macrocystis* competitive dominance [@Dayton1999].
+
+***
+
+### Multivariate Model Output: Physical Forcing
+
+We can also investigate the effects of the physical forcing variables on the biological dynamics in a similar plot:
+
+```{r phys coeffs,echo=F,message=F,warning=F,fig.height=8,fig.width=8}
+# with boxplot
+all.phys.coeffs.plot <- all.mod.coeffs.long %>%
+  filter(effect %in% phys.vars)%>%
+  mutate(label = case_when(
+    mod == "mac" ~ "Macrocystis >1m",
+    mod == "ymac" ~ "Macrocystis <1m",
+    mod == "lam" ~ "Laminaria",
+    mod == "pter" ~ "Pterygophora",
+    mod == "red" ~ "Red urchin",
+    mod == "purp" ~ "Purple urchin")
+  ) %>%
+  ggplot(aes(effect,value))+
+  scale_x_discrete(labels=c(
+    "mei"="MEI",
+    "npgo"="NPGO",
+    "pdo"="PDO",
+    "waves"="SWH",
+    "sst"="SST")
+    )+
+  geom_boxplot(fill="dodgerblue2",outlier.alpha=0.4,position = "identity")+
+  stat_summary(fun.y=mean, colour="white", geom="point", 
+               shape=17, size=2,show.legend = FALSE)+
+  geom_hline(yintercept=0,linetype=2)+
+  ylim(-2,2)+
+  coord_flip()+
+  labs(y="Estimated Interaction Coefficient",x="Physical Forcing",title="Estimated Effect of Physical Variables in Multivariate Models")+
+  facet_grid(mod_plotting_name~.)+
+  geom_text(aes(x=1.5,y=2,label=label),hjust=1,family="Arial",fontface="italic",check_overlap = TRUE,size=4,show.legend = FALSE)+
+  theme(strip.background = element_blank(),
+        strip.text = element_blank())
+all.phys.coeffs.plot
+```
+
+In this figure, each box represents the distribution of estimated effect of a physical driver (left y-axis) on the modeled species across all data for a given model. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index.
+
+Physical forcing variables affect the dynamics of all species in the study, to varying degrees. *Macrocystis* is the only species in the analysis that displays a significant cross-mapping signal (significant causal forcing) with all five included physical variables. The negative effect of SWH on adult *Macrocystis*, and the positive effect of the NPGO, are consistent with our expectations [@Bell2015]. However, the PDO index has a positive effect on *Macrocystis*, contrary to expectation because in general, positive values of the PDO are associated with warmer SST and nutrient-poor conditions in the northeast Pacific. *Macrocystis* recruits, on the other hand, are positively affected by the MEI, SWH, and SST, and negatively affected by the PDO and NPGO. Together, the effects of physical forcing on *Macrocystis* suggest that conditions that are poor for survivorship of adults (higher SST, less nutrient availability, greater disturbance) may produce favorable conditions for recruitment of new sporophytes.
+
+The physical variables are more influential drivers of *Macrocystis* than *Pterygophora* or *Laminaria* dynamics. No physical variable was causally linked to *Laminaria* density. Conversely, although the PDO, NPGO, SWH and SST were identified as causal variables for *Pterygophora* density, the magnitudes of their effects are small and inconsistent.
+
+The effects of physical forcing are not limited to the algal species, although the magnitude of physical forcing effects on red urchins are small, especially compared to the effect of their own density (the intraspecific effect). For the purple urchin, the PDO, NPGO, and MEI all have negative but variable effects. For red urchin, the effects of SWH and SST are small and negative, while the effect of the NPGO is slightly positive.
+
+***
+
+### Physical Forcing Effect on Interactions
+
+A major observation from the multivariate models is that many interactions between species and between species and their environments can be variable (positive or negative, depending on conditions). For the algal species especially, the combination of variable interspecific interaction strengths and occasionally strong environmental forcing effects suggests that the strength of species interactions may be driven by environmental context.
+
+In order to observe this, we remove physical forcings and re-run the multivariate models with just the species interactions, and then look at the resulting trends through the lens of various physical forcings without having those forcings included in the models (to remove endogeneity). We will investigate the effect of environmental variables on interaction strength for the different interaction types (herbivory, competition, and intraspecies effects).
+
+```{r model spp_only,warning=F}
+# remove physical variables from predictors then run models
+causal.vars.spp <- purrr::map(westend.causal.vars,function(x) setdiff(x,phys.vars))
+multi.mods.spp.only <- purrr::map(list("mac","purp","lam","ymac","red","pter"),function(x) {
+  smap_multi(westend,westend.segs,x,causal.vars.spp[[x]])
+})
+names(multi.mods.spp.only) <- c("mac","purp","lam","ymac","red","pter")
+```
+
+```{r,fig.height=8,fig.width=7.5}
+# collect model performance statistics
+spp.only.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria","Young Macrocystis","Red Urchin","Pterygophora"),
+                             Predictors=purrr::map(causal.vars.spp,.f=function(x){
+                               y=namekey$long[match(x,namekey$short)];paste(y,sep=",",collapse=", ")}),
+                             Rho = map_dbl(multi.mods.spp.only,function(x) x$model$rho),
+                             MAE=map_dbl(multi.mods.spp.only,function(x) x$model$mae),
+                             mod=c("mac","purp","lam","ymac","red","pter"))
+spp.only.model.perf %>% select(-mod) %>% 
+  kable("latex",col.names = c("Modeled Species","Predictors","$\\rho$","MAE"),digits=3,escape=F) %>%
+  kable_styling(full_width = F) %>%
+  column_spec(1,bold=T)%>%
+  column_spec(2, width = "30em")
+
+# Join all coefficients
+spp.only.mod.coeffs <- purrr::map(names(multi.mods.spp.only),function(x){
+  multi.mods.spp.only[[x]][["coeffs.long"]] %>% mutate(mod=x)
+  }
+  )%>%
+  bind_rows() %>%
+  mutate(mod_plotting_name = namekey$long[match(mod,namekey$short)])
+
+
+# assign interaction types: competition, herbivory (effect of urchins on algae), consumption (effect of algae on urchin), or growth
+algaes<-c("lam","mac","pter","ymac")
+urchins <- c("red","purp")
+combinations <- expand.grid(study_spp,study_spp) %>% 
+  rename(mod=Var1,effect=Var2) %>%
+  select(mod,effect)%>%
+  mutate(type = case_when(
+    mod ==   effect ~ "intraspecies",
+    mod == "mac" & effect == "ymac" ~ "intraspecies",
+    mod == "ymac" & effect == "mac" ~ "intraspecies",
+    mod %in% algaes & effect %in% algaes ~ "algal competition",
+    mod %in% urchins & effect %in% urchins ~ "urchin competition",
+    mod %in% algaes & effect %in% urchins ~ "herbivory",
+    mod %in% urchins & effect %in% algaes ~ "consumption",
+    TRUE ~ "NA"
+    ),
+    type=factor(type,levels=c("algal competition","urchin competition","herbivory","consumption","intraspecies")),
+    spp_type = case_when(
+      mod %in% algaes ~ "algae",
+      mod %in% urchins ~ "urchin",
+      TRUE ~ "none"
+    )
+  ) %>%
+  mutate_at(vars(mod,effect),as.character)
+
+# add rho label for facet plotting
+mod_rho_labels <- spp.only.model.perf %>%
+  mutate(label1="rho==",Rho_round=round(Rho,2))%>%
+  unite(label,label1,Rho_round,sep="",remove=F)%>%
+  select(mod,label)
+
+spp.only.mod.coeffs %>%
+  #add the type of interaction
+  left_join(combinations,by=c("mod","effect"))%>%
+  left_join(mod_rho_labels,by="mod") -> spp.only.mod.coeffs
+
+# boxplot of all species interactions
+spp.only.mod.coeffs.plot.box <- spp.only.mod.coeffs %>%
+   filter(effect %in% study_spp) %>%
+  #plot
+  ggplot(aes(x=plotting,y=value,fill=type))+
+  geom_boxplot(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
+  stat_summary(fun.y=mean, colour="white", geom="point", 
+               shape=17, size=2,show.legend = FALSE)+
+  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  scale_x_discrete(breaks=effect_categories,limits=effect_categories,labels=effect_categories,drop=FALSE)+
+  geom_hline(yintercept=0,linetype=2)+
+  geom_text(aes(x=1.2,y=1.8,label=label),size=4, parse=T,check_overlap=TRUE,show.legend = FALSE)+
+  ylim(-2,2)+
+  coord_flip()+
+  labs(y="Estimated Interaction Coefficient",x="Interacting Species",title="Estimated Species Interactions in Multivariate Models\n(Physical variables removed)")+
+  facet_grid(mod_plotting_name~.,scales="free_y",space="free")
+
+spp.only.mod.coeffs.plot.box
+```
+
+```{r mean interactions, fig.height=8,fig.width=7.5}
+# join all original density variables and physical variables to interaction data
+
+spp.only.coeffs.with.phys<- westend %>%
+  select(one_of(c(phys.vars,"period"))) %>%
+  distinct() %>%
+  right_join(filter(spp.only.mod.coeffs,!is.na(type)),by="period")%>%
+  gather("external_forcing","ext_value",one_of(phys.vars))
+
+```
+
+### Distribution of Interaction Strengths by Type
+
+Grouping all of the above species interactions by type, we can investigate any overall patterns across models.
+
+```{r interactions density plot by type,fig.height=7,fig.width=6}
+# Density plot by interaction type
+
+interaction_distribution_by_type <- spp.only.mod.coeffs %>%
+  filter(!is.na(type)) %>%
+  group_by(type) %>%
+  mutate(mean_int=mean(value,na.rm=T))%>%
+  ungroup()%>%
+  ggplot(aes(value,..density..,fill=type))+
+  geom_density(alpha=0.8,color=NA)+
+  # geom_density_ridges(alpha=0.8,scale=1.4)+
+  # stat_density_ridges(geom="density_ridges_gradient",calc_ecdf='true',quantiles=4,alpha=0.8,scale=1)+
+  # scale_fill_viridis_d(name="quantiles",alpha=0.8)+
+  geom_vline(xintercept=0,linetype=2)+
+  geom_vline(aes(xintercept=mean_int),color='black')+
+  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  scale_color_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  guides(fill=F,color=F)+
+  xlim(-1.5,1.5)+
+  labs(x="Interaction strength",y="Probability density",title="Distribution of Interaction Strengths by Type")+
+  facet_grid(rows=vars(type))
+
+interaction_distribution_by_type
+```
+
+***
+    
+### Example: Effect of Macrocystis on Pterygophora
+
+We can investigate patterns in specific interactions by looking at how their strength and direction vary across environmental gradients. Here, we look at whether there are patterns in an important kelp forest interaction---the effect of *Macrocystis* on *Pterygophora*.
+
+```{r mac pter,fig.width=6,fig.height=6}
+mac_effect_on_pter <-spp.only.coeffs.with.phys %>%
+  ungroup()%>%
+  filter(mod=="pter",effect=="mac")%>%
+  mutate(phys_high_low=case_when(
+    ext_value > 1 ~ "high",
+    ext_value < -1 ~ "low")) %>%
+  filter(!is.na(phys_high_low))%>%
+  left_join(select(westend,period,one_of(phys.vars),red),by="period")%>%
+  group_by(type,external_forcing,phys_high_low)%>%
+  mutate(mean_int=mean(value,na.rm=T))%>%
+  distinct()%>%
+  ungroup()
+
+# physical forcings labeller
+phys.labeller <- c(
+  mei= "MEI",
+  npgo= "NPGO",
+  pdo= "PDO",
+  sst="SST",
+  waves="SWH"
+)
+
+mac_effect_on_pter_plot <-mac_effect_on_pter %>%
+  select(-red) %>% distinct() %>%
+ggplot(aes(value,..density..,fill=phys_high_low))+
+  geom_density(col=NA,alpha=0.6)+
+  geom_vline(xintercept=0,linetype=2)+
+  geom_vline(aes(xintercept=mean_int,color=phys_high_low),size=1.5)+
+  scale_fill_manual(values=c("darkorange","dodgerblue4"),name="Physical\nForcing Value",labels=c("high","low"))+
+  scale_color_manual(values=c("darkorange","dodgerblue4"))+
+  guides(color="none")+
+  labs(x="Effect of Macrocystis on Pterygophora",y="Probability Density", title="Varying Interaction Strength across Environmental Gradients\n(n=520 interactions for each box)")+
+  facet_grid(rows=vars(external_forcing),labeller=labeller(external_forcing=phys.labeller))+
+  theme(strip.text=element_text(size=10))
+
+mac_effect_on_pter_plot
+```
+
+Surprisingly, at this site, it seems that *Macrocystis* generally has a neutral to positive effect on *Pterygophora*, a result seemingly incongruous with the established competitive hierarchy. However, the study site (a small offshore island) is highly exposed to strong currents and winter storms, partly because it is composed of low-rugosity reefs. These habitat characteristics are known to reduce the ability of *Macrocystis* to be competitively dominant [@Dayton1984;@Graham2007c]. Our findings strongly suggest that *Macrocystis* competitive dominance is quite rare at this site, or at the very least is outweighed by facilitation in most instances. After splitting the estimated species interactions by those that took place under “low” versus “high” values of the five oceanographic indices (greater than 1 standard deviation below or above the mean conditions in the raw oceaongraphic data), it immediately becomes clear that strong negative effects of *Macrocystis* on *Pterygophora* only occur under low values of the MEI, PDO, and SST, or high values of the NPGO. These are all climate regimes associated with increased availability of nutrients in southern California. Hence, despite the weak mean interaction and common facilitation by *Macrocystis* at this site, the rare negative effects of Macrocystis on Pterygophora conform to expected patterns across decadal-scale climate shifts.
+
+### Algal competition and herbivory under different environmental contexts
+
+As a final look at the plasticity of species interactions across environmental gradients, we can gather all of the estimated species interactions from our multispecies models, and, like we do for the *Macrocystis-Pterygophora* example above, categorize the data by:
+
+* What environmental context they took place under (highly negative, normal, or highly positive), indicated by normalized values of less than -1, between -1 and 1, and greater than 1, respectively.
+
+* Whether the measured is negative, positive, or not significantly different than neutral.
+
+In the figure below, each bar represents the percentage of each species’ effects that are significantly positive or negative (effects not significantly different than zero not shown). Note varying scale on y-axis.
+
+```{r algal comp context,fig.width=8,fig.height=6}
+# pull out all estimate algal competition coefficients and establish whether they're neutral
+alg_comp <- spp.only.mod.coeffs %>%
+  filter(type %in% c("algal competition","herbivory"))%>%
+  mutate(neutral=ifelse(lower<0 & upper>0,1,0))%>%
+  left_join(select(westend,period,one_of(phys.vars)),by="period") %>% distinct()%>%
+  select(mod,effect,long,plotting,value,neutral,one_of(phys.vars))
+
+alg_comp_contexts_simple <- alg_comp%>%
+  mutate_at(vars(one_of(phys.vars)),function(x) {case_when(
+    x < -1 ~ "Neg",
+    x < 1 & x > -1 ~ "Norm",
+    x > 1 ~ "Pos"
+  )
+    })%>%
+  gather("driver","context",mei:sst)%>%
+  mutate(context=factor(context,levels=c("Neg",'Norm','Pos')))%>%
+  distinct()%>%
+  group_by(long,plotting,effect,driver,context)%>%
+  summarise(n=n(),perc_negative=sum(neutral==0 & value<0)/n()*-100,perc_positive=sum(neutral==0 & value>0)/n()*100,
+            perc_neutral=sum(neutral)/n()*100, perc_nonneutral=sum(neutral==0)/n()*100)%>%
+  ungroup()%>%
+  filter(perc_neutral<100,!is.na(context),effect!='ymac')%>%
+  gather("comp_or_mutualism","prevalance",perc_negative:perc_positive)%>%
+  ungroup()%>%
+  arrange(effect)
+
+competition_herbivory_context_plot <- alg_comp_contexts_simple%>%
+  filter(effect != "pter")%>%
+  ggplot(aes(context,prevalance,fill=comp_or_mutualism))+
+  geom_col(color=NA)+
+  scale_y_continuous(breaks=seq(-60,60,by=10),labels=c(60,50,40,30,20,10,0,10,20,30,40,50,60))+
+  scale_fill_npg(labels=c("Negative","Positive"),name="Interaction Direction")+
+  labs(x="Level of Physical Driver",y="Percent of Estimated Interactions")+
+  facet_grid(long~driver,labeller = labeller(driver=phys.labeller),scales="free")
+competition_herbivory_context_plot
+```
+
+There are a number of interesting patterns that emerge when the model outputs are organized in this manner. For example, while red urchin *M. franciscanus* herbivory is a strong negative effect (high percentage of significantly negative interactions) under all conditions, the purple urchin, *S. purpuratus*, has a stronger effect in higher-nutrient contexts (low MEI, PDO, and SST). Additionally, *Laminaria farlowii* is a demonstrably a better competitor under conditions that are stressful to *Macrocystis*, including low-nutrient, high-temperature, and high-disturbance regimes38. Also clear in the figure is, again, the role of *Macrocystis* as both competitor and facilitator. Under El Niño conditions, or strong positive phases of the PDO, *Macrocystis* acts more as a facilitator than a competitor with the other brown algae species, and likewise for low levels of physical disturbance. Only when sufficient nutrients are available under La Niña conditions or low under sea  surface temperatures does Macrocystis have predominantly negative effects on the other algae species. The precise mechanisms behind the balancing of positive and negative effects of *Macrocystis* cannot be determined directly from these results, but it is clear that the effective role of this key foundation species shifts with environmental context.
+
+Beginning with a published monitoring data set from a kelp forest ecosystem, EDM methods helped to elucidate causation, build interaction networks, and investigate the influence of large-scale environmental drivers on interaction strength. In this particular ecosystem, our analyses of time series data confirmed decades of experimental work regarding the foundation species *Macrocystis pyrifera*, but also were able to contextualize those classic interactions as they apply at the study site to when they were important.
+
+## References
