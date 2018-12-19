@@ -435,7 +435,131 @@ div.tocify {
 <div id="dynamic-species-interaction-models" class="section level3">
 <h3>Dynamic Species Interaction Models</h3>
 <p>When we construct multivariate models for the six variables in the data based on their causal relationships, we get multivariate S-map models that perform well, displaying a high level of correlation between out-of-sample predictions and observed values, and relatively low mean absolute error (MAE).</p>
-
+<table class="table" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:left;">
+Modeled Species
+</th>
+<th style="text-align:left;">
+Predictors
+</th>
+<th style="text-align:right;">
+<span class="math inline">\(\theta\)</span>
+</th>
+<th style="text-align:right;">
+<span class="math inline">\(\rho\)</span>
+</th>
+<th style="text-align:right;">
+MAE
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;font-weight: bold;">
+Macrocystis
+</td>
+<td style="text-align:left;width: 30em; ">
+Macrocystis &gt;1m, Laminaria, Red urchin, Multivariate ENSO Index, Pacific Decadal Oscillation, North Pacific Gyre Oscillation, Significant Wave Height, Sea Surface Temperature
+</td>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+0.834
+</td>
+<td style="text-align:right;">
+0.358
+</td>
+</tr>
+<tr>
+<td style="text-align:left;font-weight: bold;">
+Purple Urchin
+</td>
+<td style="text-align:left;width: 30em; ">
+Purple urchin, Macrocystis &gt;1m, Red urchin, Macrocystis &lt;1m, Multivariate ENSO Index, Pacific Decadal Oscillation, North Pacific Gyre Oscillation
+</td>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+0.845
+</td>
+<td style="text-align:right;">
+0.348
+</td>
+</tr>
+<tr>
+<td style="text-align:left;font-weight: bold;">
+Laminaria
+</td>
+<td style="text-align:left;width: 30em; ">
+Laminaria, Macrocystis &gt;1m, Purple urchin, Red urchin, Pacific Decadal Oscillation
+</td>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+0.499
+</td>
+<td style="text-align:right;">
+0.443
+</td>
+</tr>
+<tr>
+<td style="text-align:left;font-weight: bold;">
+Young Macrocystis
+</td>
+<td style="text-align:left;width: 30em; ">
+Macrocystis &lt;1m, Laminaria, Macrocystis &gt;1m, Pterygophora, Red urchin, Multivariate ENSO Index, Pacific Decadal Oscillation, North Pacific Gyre Oscillation, Significant Wave Height
+</td>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+0.797
+</td>
+<td style="text-align:right;">
+0.364
+</td>
+</tr>
+<tr>
+<td style="text-align:left;font-weight: bold;">
+Red Urchin
+</td>
+<td style="text-align:left;width: 30em; ">
+Red urchin, Laminaria, Macrocystis &gt;1m, Pterygophora, Purple urchin, Macrocystis &lt;1m, North Pacific Gyre Oscillation, Significant Wave Height
+</td>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+0.782
+</td>
+<td style="text-align:right;">
+0.389
+</td>
+</tr>
+<tr>
+<td style="text-align:left;font-weight: bold;">
+Pterygophora
+</td>
+<td style="text-align:left;width: 30em; ">
+Pterygophora, Macrocystis &gt;1m, Purple urchin, Red urchin, Macrocystis &lt;1m, Pacific Decadal Oscillation, North Pacific Gyre Oscillation, Significant Wave Height, Sea Surface Temperature
+</td>
+<td style="text-align:right;">
+4
+</td>
+<td style="text-align:right;">
+0.773
+</td>
+<td style="text-align:right;">
+0.329
+</td>
+</tr>
+</tbody>
+</table>
 <hr />
 </div>
 </div>

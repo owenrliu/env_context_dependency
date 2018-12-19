@@ -243,7 +243,7 @@ westend.simp.list <- list()
 for(i in 1:length(study_spp)) {
   spp <- study_spp[i]
   dat <- westend %>% select(matches(spp)) %>% as.data.frame()
-  out <- simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),E=2:15,silent=T) %>%
+  out <- simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),E=2:15,silent=T,stats_only = F) %>%
     mutate(spp=namekey$long[match(spp,namekey$short)])
   westend.simp.list[[spp]] <- out
 }
@@ -758,7 +758,7 @@ westend.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria"
                              MAE=map_dbl(westend.multi.mods,function(x) x$model$mae),
                              mod=c("mac","purp","lam","ymac","red","pter"))
 westend.model.perf %>% select(-mod) %>% 
-  kable("latex",col.names = c("Modeled Species","Predictors","$\\theta$","$\\rho$","MAE"),digits=3,escape=F) %>%
+  kable("html",col.names = c("Modeled Species","Predictors","$\\theta$","$\\rho$","MAE"),digits=3,escape=F) %>%
   kable_styling(full_width = F) %>%
   column_spec(1,bold=T)%>%
   column_spec(2, width = "30em")
