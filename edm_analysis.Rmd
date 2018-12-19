@@ -441,7 +441,7 @@ for(i in 1:n_row) {
     if(i != j) {
       # remember, we use the best embedding dimension for the target variable (the variable we're cross-mapping to, i.e. the putative forcing variable)
       tempE=westend.bestE[col_names[j]]
-      temp <- ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 2+i,target_column = 2+j,lib_sizes = c(10,500),num_samples=100,replace=T,silent=T,RNGseed = 41389)
+      temp <- suppressWarnings(ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 2+i,target_column = 2+j,lib_sizes = c(10,500),num_samples=100,replace=T,silent=T,RNGseed = 41389))
       
      # mean rho at library size 500
       rhomeans <- temp %>% ccm_means()
@@ -499,11 +499,11 @@ westend.xmap_all_plot
 
 The plot shows cross-mapped (predictor, or forcing) variables in the columns, while rows are predicted variables (i.e., columns cause rows). Gray indicates a lack of significant causal signal--failure to satisfy one of the above criteria--and darker colors represent higher cross-map skill.
 
-From this plot, we can make a few observations. The five physical forcing variables are represented in the first five columns, followed by the algae and urchin species. Many physical variables show causal relationships with kelp forest species, especially the North Pacific Gyre Oscillation and maximum wave height (physical disturbance), which show causal links to almost all the biological variables. The NPGO is cross-mapped well by the purple urchin *Strongylocentrotus purpuratus*, while both the NPGO and wave height show a strong influence on adult *Macrocystis* dynamics. So already we are seeing effects that we might expect based on known interactions between physical variables and biological dynamics [@Reed2011;@Bell2015].
+From this plot, we can make a few observations. The five physical forcing variables are represented in the first five columns, followed by the algae and urchin species. Many physical variables show causal relationships with kelp forest species, especially the North Pacific Gyre Oscillation and maximum wave height (physical disturbance), which show causal links to almost all the biological variables. The NPGO is cross-mapped well by the purple urchin *Strongylocentrotus purpuratus*, while the NPGO, SST and wave height all show a strong influence on adult *Macrocystis* dynamics. So already we are seeing effects that we might expect based on known interactions between physical variables and biological dynamics [@Reed2011;@Bell2015].
 
-Additionally, adult *Macrocystis* itself seems to be the first or second most important driver of the dynamics of all the other species in the tropic web, supporting the decades of research showing the importance of giant kelp as a foundational species [@Graham2007c;@Dayton1985], but further suggesting that its dynamics fundamentally drive the dynamics of other species.  Juvenile, or sporophyte *Macrocystis*, on the other hand, is affected by most of the variables in the system, but does not itself strongly drive dynamics of other species, again an effect we would expect to find. In this system, *Pterygophora californica* also seems to be a strong causal driver of the dynamics of other species in the trophic web.
+Additionally, adult *Macrocystis* itself seems to be the first or second most important driver of the dynamics of all the other species in the tropic web, supporting the decades of research showing the importance of giant kelp as a foundational species [@Graham2007c;@Dayton1985], but further suggesting that its dynamics fundamentally drive the dynamics of other species. Interestingly, while juvenile and adult *Macrocystis* and *Pterygophora* seem to be strongly driven by environment, *Laminaria* is more driven by adult *Macrocystis* and the two urchin species, suggestive of a more opportunistic life history.
 
-Both sea urchin species are causally linked to *Macrocystis* density, and they also have a causal effect on one another. This analysis alone, however, does not yet tell us whether the bi-directional interaction between *S. purpuratus* and *M. franciscanus* represents apparent mutualism, apparent competition, or a mixture of both at different times. To further investigate the direction and magnitude of the species interactions themselves, we next build multivariate EDM models that explicitly measure dynamic species interaction strengths.
+Both sea urchin species are causally linked to *Macrocystis* density, and *M franciscanus* drives *S. purpuratus* dynamics. This analysis alone, however, does not yet tell us whether the interaction between *S. purpuratus* and *M. franciscanus* represents apparent mutualism, apparent competition, or a mixture of both at different times. To further investigate the direction and magnitude of the species interactions themselves, we next build multivariate EDM models that explicitly measure dynamic species interaction strengths (and directions).
 
 ***
 
@@ -550,11 +550,10 @@ edge.cols<-round((edge.weights-min(edge.weights))/(max(edge.weights)-min(edge.we
 edge.cols <- edge.pal[edge.cols]
 
 # some edges must be curved to look okay in the graph
-curves <- rep(0,40)
-curves[c(1,4,13,17,18,21)] <-0.4
-curves[c(10,19)] <-0.3
-curves[20] <- -0.1
-curves[c(6,39)] <- 0.2
+curves <- rep(0,length(edge.weights))
+curves[c(1,4,18,21)] <-0.4
+curves[c(19)] <-0.3
+curves[c(6,8,10,16,20)] <- 0.2
 
 #plot to file if uncommented
 plot(g2,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves,margin=0,vertex.size=20,rescale=T,edge.lty=1,edge.color=edge.cols,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="")
@@ -672,11 +671,11 @@ However, as a further illustration of how predictions are made in EDM, consider 
 
 smap_multi <- function(sitedat,sitesegs,species,causalvars) {
   
-  full.mod <- block_lnlp(sitedat,lib=as.matrix(sitesegs),pred=as.matrix(sitesegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T)
+  full.mod <- suppressWarnings(block_lnlp(sitedat,lib=as.matrix(sitesegs),pred=as.matrix(sitesegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T))
 
   opttheta <- full.mod$theta[full.mod$rho==max(full.mod$rho)]
   
-  best.mod <- block_lnlp(sitedat,lib=as.matrix(sitesegs),pred=as.matrix(sitesegs),columns=causalvars,target_column = species,theta = opttheta, num_neighbors=0,method="s-map",save_smap_coefficients=T,silent=T)
+  best.mod <- suppressWarnings(block_lnlp(sitedat,lib=as.matrix(sitesegs),pred=as.matrix(sitesegs),columns=causalvars,target_column = species,theta = opttheta, num_neighbors=0,method="s-map",save_smap_coefficients=T,silent=T))
   
   # gather and organize model output
   t <- best.mod$model_output[[1]]$time
@@ -857,7 +856,7 @@ It is clear from the boxplots that fitted intra- and interspecific interactions 
 
 The interactions of the urchin and algal species show evidence of herbivory (purple boxes). Both red and purple urchin density have predominantly negative effect on adult and juvenile *Macrocystis*, *Laminaria*, and *Pterygophora*, effects that were consistent with our hypotheses. However, the converse effects of algal density on urchin density (green boxes) are generally small, and not consistently positive.
 
-Few strong and consistent competitive interactions (red and orange boxes for urchin and algal competition, respectively) are observed in model estimates. Estimates of the interaction between the two urchin species are small and near zero. The interactions are small relative to other forcing factors in the urchin models, and are occasionally positive (apparent mutualism). Among the algal species, the clearest negative competitive effect is that of *Pterygophora* on adult *Macrocystis* (top panel). Other interactions are not always negative (competitive), and contrary to expectations, positive values were estimated for many interactions. *Pterygophora* has only intermittent negative effects on young *Macrocystis*, and *Pterygophora* and *Laminaria* display an apparent mutualism. Perhaps most surprisingly, *Macrocystis* does not display a consistent negative effect on *Pterygophora* or *Laminaria*, contrary to our hypothesis of *Macrocystis* competitive dominance [@Dayton1999].
+Few strong and consistent competitive interactions (red and orange boxes for urchin and algal competition, respectively) are observed in model estimates. Estimates of the interaction between the two urchin species are near zero. The effect of red on purple urchins is small relative to other forcing factors in the urchin models, and is occasionally positive (apparent mutualism). Among the algal species, the clearest negative competitive effect is that of *Laminaria* on adult *Macrocystis* (top panel). Other interactions are not always negative (competitive), and contrary to expectations, positive values were estimated for many interactions. *Pterygophora* has only intermittent negative effects on young *Macrocystis*, and there is little evidence of an interaction between *Pterygophora* and *Laminaria*. Perhaps most surprisingly, *Macrocystis* does not display a consistent negative effect on *Pterygophora*, contrary to our hypothesis of *Macrocystis* competitive dominance [@Dayton1999].
 
 ***
 
@@ -901,11 +900,11 @@ all.phys.coeffs.plot
 
 In this figure, each box represents the distribution of estimated effect of a physical driver (left y-axis) on the modeled species across all data for a given model. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index.
 
-Physical forcing variables affect the dynamics of all species in the study, to varying degrees. *Macrocystis* is the only species in the analysis that displays a significant cross-mapping signal (significant causal forcing) with all five included physical variables. The negative effect of SWH on adult *Macrocystis*, and the positive effect of the NPGO, are consistent with our expectations [@Bell2015]. However, the PDO index has a positive effect on *Macrocystis*, contrary to expectation because in general, positive values of the PDO are associated with warmer SST and nutrient-poor conditions in the northeast Pacific. *Macrocystis* recruits, on the other hand, are positively affected by the MEI, SWH, and SST, and negatively affected by the PDO and NPGO. Together, the effects of physical forcing on *Macrocystis* suggest that conditions that are poor for survivorship of adults (higher SST, less nutrient availability, greater disturbance) may produce favorable conditions for recruitment of new sporophytes.
+Physical forcing variables affect the dynamics of all species in the study, to varying degrees. *Macrocystis* is the only species in the analysis that displays a significant cross-mapping signal (significant causal forcing) with all five included physical variables. The positive effect of the NPGO is consistent with our expectations [@Bell2015]. However, the PDO index has a positive effect on *Macrocystis*, contrary to expectation because in general, positive values of the PDO are associated with warmer SST and nutrient-poor conditions in the northeast Pacific. *Macrocystis* recruits, on the other hand, are positively affected by the MEI, SWH, and SST, and negatively affected by the PDO and NPGO. Together, the effects of physical forcing on *Macrocystis* suggest that conditions that are poor for survivorship of adults (higher SST, less nutrient availability, greater disturbance) may produce favorable conditions for recruitment of new sporophytes.
 
-The physical variables are more influential drivers of *Macrocystis* than *Pterygophora* or *Laminaria* dynamics. No physical variable was causally linked to *Laminaria* density. Conversely, although the PDO, NPGO, SWH and SST were identified as causal variables for *Pterygophora* density, the magnitudes of their effects are small and inconsistent.
+The physical variables are more influential drivers of *Macrocystis* than *Pterygophora* dynamics. No physical variable was causally linked to *Laminaria* density. Moreover, although the PDO, NPGO, SWH and SST were identified as causal variables for *Pterygophora* density, the magnitudes of their effects are small and inconsistent.
 
-The effects of physical forcing are not limited to the algal species, although the magnitude of physical forcing effects on red urchins are small, especially compared to the effect of their own density (the intraspecific effect). For the purple urchin, the PDO, NPGO, and MEI all have negative but variable effects. For red urchin, the effects of SWH and SST are small and negative, while the effect of the NPGO is slightly positive.
+For the purple urchin, the PDO, NPGO, and MEI all have on average negative but variable effects.
 
 ***
 
@@ -933,7 +932,7 @@ spp.only.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria
                              MAE=map_dbl(multi.mods.spp.only,function(x) x$model$mae),
                              mod=c("mac","purp","lam","ymac","red","pter"))
 spp.only.model.perf %>% select(-mod) %>% 
-  kable("latex",col.names = c("Modeled Species","Predictors","$\\rho$","MAE"),digits=3,escape=F) %>%
+  kable("html",col.names = c("Modeled Species","Predictors","$\\rho$","MAE"),digits=3,escape=F) %>%
   kable_styling(full_width = F) %>%
   column_spec(1,bold=T)%>%
   column_spec(2, width = "30em")
