@@ -397,7 +397,7 @@ Each individual CCM analysis involves looks something like this:
 
 ```{r ccm example}
 tempE <- westend.bestE['red']
-temp <- ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 'mac',target_column = 'red',lib_sizes = c(10,25,50,75,100,125,150,200,300,400,500),num_samples=100,replace=T,silent=T,RNGseed = 41389)
+temp <- suppressWarnings(ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 'mac',target_column = 'red',lib_sizes = c(10,25,50,75,100,125,150,200,300,400,500),num_samples=100,replace=T,silent=T,RNGseed = 41389))
 
 mac_xmap_red <- temp %>%
   group_by(lib_size)%>%
@@ -748,7 +748,7 @@ names(westend.multi.mods) <- c("mac","purp","lam","ymac","red","pter")
 
 When we construct multivariate models for the six variables in the data based on their causal relationships, we get multivariate S-map models that perform well, displaying a high level of correlation between out-of-sample predictions and observed values, and relatively low mean absolute error (MAE).
 
-```{r model perf,echo=F}
+```{r model perf,echo=F,results='asis'}
 # collect model performance statistics
 westend.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria","Young Macrocystis","Red Urchin","Pterygophora"),
                              Predictors=purrr::map(westend.causal.vars,.f=function(x){
@@ -757,7 +757,9 @@ westend.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria"
                              Rho = map_dbl(westend.multi.mods,function(x) x$model$rho),
                              MAE=map_dbl(westend.multi.mods,function(x) x$model$mae),
                              mod=c("mac","purp","lam","ymac","red","pter"))
-westend.model.perf %>% select(-mod) %>% 
+
+westend.model.perf %>% 
+  select(-mod) %>%
   kable("html",col.names = c("Modeled Species","Predictors","$\\theta$","$\\rho$","MAE"),digits=3,escape=F) %>%
   kable_styling(full_width = F) %>%
   column_spec(1,bold=T)%>%
