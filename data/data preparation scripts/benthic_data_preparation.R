@@ -49,12 +49,17 @@ westend.norm <- read_csv('data/raw/Benthic density raw data.csv',col_types="iicc
   # to zero mean, unit variance
   filter(spp %in% study_spp, site %in% westend.sites) %>%
   group_by(spp,site) %>%
-  mutate(norm=(dens-mean(dens,na.rm=T))/sd(dens,na.rm=T)) %>%
+  # remove linear trends by using residuals of simple linear model
+  mutate(dens_res= residuals(lm(dens~period))) %>% 
+  
+  # normalize to zero mean, unit variance
+  mutate(norm=(dens_res-mean(dens_res,na.rm=T))/sd(dens_res,na.rm=T)) %>%
+
   ungroup() %>%
   distinct() %>%
   
   # Cast from long to wide-form data (periods by species) for use in later analyses
-  select(-dens) %>%
+  select(-dens_res,-dens) %>%
   spread(key=spp,value=norm) %>%
   
   # Finally, fill in empty monitoring periods with NA values

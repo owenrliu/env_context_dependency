@@ -18,8 +18,6 @@ source(here::here('data','data preparation scripts','benthic_data_preparation.R'
 ## Now we simply join the two datasets by their common monitoring period identifier
 ## Physical variables will be duplicated to attach to each of the benthic swath replicates
 
-
-
 westend <- westend.norm %>% left_join(phys.dat.norm,by="period")
 
 # Remove excess data from the workspace
