@@ -1219,7 +1219,7 @@ We can proceed one step further and use the neighborhood-averaged contexts above
 
 In an EDM framework, we can investigate the SGH through the lens of our estimated interactions: Does facilitation between algal species become more common as the negative effects of adverse environmental conditions become more severe? To address this question, we compare the effect of environmental variables against the effect of species interactions.
 
-```{r jacobian vs jacobian}
+```{r jacobian vs jacobian,fig.height=8,fig.width=6}
 # plot comparison function
 plot_jacobian_comparison <- function(model,eff1,eff2){
   
@@ -1229,7 +1229,7 @@ plot_jacobian_comparison <- function(model,eff1,eff2){
     distinct() %>%
     pivot_wider(names_from=effect,values_from=value_avg,names_prefix = 'eff_')
   
-  minmax <- c(min(dat[,4]-0.1),max(dat[,4]+0.1),min(dat[,3]-0.1),max(dat[,3]+0.1))
+  minmax <- c(min(dat[,paste0('eff_',eff2)]-0.2),max(dat[,paste0('eff_',eff2)]+0.2),min(dat[,paste0('eff_',eff1)]-0.3),max(dat[,paste0('eff_',eff1)]+0.2))
   
   name1 <- namekey$long[match(eff1,namekey$short)]
   name2 <- namekey$long[match(eff2,namekey$short)]
@@ -1239,10 +1239,10 @@ plot_jacobian_comparison <- function(model,eff1,eff2){
     ggplot(aes_string(paste0("eff_",eff2),paste0("eff_",eff1)))+
     geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=minmax[3],ymax=0,fill='salmon')+
     geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=0,ymax=minmax[4],fill='mediumseagreen')+
-    geom_point(size=1)+
+    geom_point(size=0.5)+
     # geom_smooth(col='gray50')+
-    annotate("text",x = minmax[1]+0.2,y=0.1,label="Facilitation",size=4,family="Times New Roman")+
-    annotate("text",x = minmax[1]+0.2,y=-0.1,label="Competition",size=4,family="Times New Roman")+
+    # annotate("text",x = minmax[1]+0.3,y=0.1,label="Facilitation",size=4,family="Times New Roman")+
+    # annotate("text",x = minmax[1]+0.3,y=-0.1,label="Competition",size=4,family="Times New Roman")+
     geom_hline(yintercept=0,linetype=2)+
     geom_vline(xintercept=0,linetype=2)+
     labs(x=paste0('Effect of\n',name2),
@@ -1250,20 +1250,62 @@ plot_jacobian_comparison <- function(model,eff1,eff2){
          title=paste0("Interacting Effects on ",modname))+
     # labs(x=paste0('\u03b4',name2,'/\u03b4',modname),
     #      y=paste0('\u03b4',name1,'/\u03b4',modname))+
-    theme(text=element_text(family='Times New Roman'),
-          axis.title=element_text(family='Times New Roman'))
+    theme(text=element_text(size=10),
+          plot.title=element_text(size=10),
+          axis.title=element_text(size=10))
 }
-# NPGO, Macrocystis, and Laminaria
-plot_jacobian_comparison('lam','mac','npgo')
 
-# NPGO, Pterygophora, and Laminaria
-plot_jacobian_comparison('lam','pter','npgo')
+# NPGO and algal ints
+p1<-plot_jacobian_comparison('lam','pter','npgo')+geom_smooth(se=F)
 
-# NPGO, Pterygophora, and Young Macrocystis
-plot_jacobian_comparison('ymac','pter','npgo')
+p2<-plot_jacobian_comparison('lam','mac','npgo')+geom_smooth(se=F)
 
-# Herbivory, Pterygophora, and Laminaria
-plot_jacobian_comparison('lam','pter','purp')
+p3<-plot_jacobian_comparison('mac','lam','npgo')+geom_smooth(se=F)
+
+p4<-plot_jacobian_comparison('ymac','lam','npgo')+geom_smooth(se=F)
+
+p5<-plot_jacobian_comparison('ymac','pter','npgo')+geom_smooth(se=F)
+
+p6<-plot_jacobian_comparison('ymac','mac','npgo')+geom_smooth(se=F)
+
+p7<-plot_jacobian_comparison('pter','mac','npgo')+geom_smooth(se=F)
+
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,nrow=4)
+
+# PDO and algal ints
+
+p8<-plot_jacobian_comparison('lam','pter','pdo')+geom_smooth(se=F)
+
+p9<-plot_jacobian_comparison('lam','mac','pdo')+geom_smooth(se=F)
+
+p10<-plot_jacobian_comparison('mac','lam','pdo')+geom_smooth(se=F)
+
+p11<-plot_jacobian_comparison('ymac','lam','pdo')+geom_smooth(se=F)
+
+p12<-plot_jacobian_comparison('ymac','pter','pdo')+geom_smooth(se=F)
+
+p13<-plot_jacobian_comparison('ymac','mac','pdo')+geom_smooth(se=F)
+
+p14<-plot_jacobian_comparison('pter','mac','pdo')+geom_smooth(se=F)
+
+grid.arrange(p8,p9,p10,p11,p12,p13,p14,nrow=4)
+
+# Purple urchin and algal ints
+p15<-plot_jacobian_comparison('lam','pter','purp')+geom_smooth(se=F)
+
+p16<-plot_jacobian_comparison('lam','mac','purp')+geom_smooth(se=F)
+
+p17<-plot_jacobian_comparison('mac','lam','purp')+geom_smooth(se=F)
+
+p18<-plot_jacobian_comparison('ymac','lam','purp')+geom_smooth(se=F)
+
+p19<-plot_jacobian_comparison('ymac','pter','purp')+geom_smooth(se=F)
+
+p20<-plot_jacobian_comparison('ymac','mac','purp')+geom_smooth(se=F)
+
+p21<-plot_jacobian_comparison('pter','mac','purp')+geom_smooth(se=F)
+
+grid.arrange(p15,p16,p17,p18,p19,p20,p21,nrow=4)
 ```
 
 ## 7. Supplementary Analysis- Multivariate Model Selection
@@ -1357,7 +1399,7 @@ For most models there is improvement in model forecasting skill with some variab
 
 In comparing the mean, median, and variance of predicted interaction strengths in the backwards-selected versus the full models, there were also not large differences for the interactions that remained in the selected models. The box-and-whisker plots below show the same summary results as in section 6, using the backwards-selected models. Visually, there is little difference in the distributions of estimated interactions.
 
-```{r compare back selected models,fig.cap="Box-and-whisker plots of estimated species interaction strengths from backwards-selected S-map models for the five focal species (panels top to bottom): Macrocystis adults, Macrocystis juveniles, Pterygophora, *Laminaria*, purple urchin, and red urchin. Each colored box represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on the modeled species across all data for a given model (white triangles: mean; vertical lines: median; box: interquartile range; whiskers extend to data point at most 1.5*IQR from the box). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, Strongylocentrotus purpuratus; P cal., Pterygophora californica; M. pyr, Macrocystis pyrifera; M. fra, Mesocentrotus franciscanus; L. far, Laminaria farlowii."}
+```{r compare back selected models,fig.cap="Box-and-whisker plots of estimated species interaction strengths from backwards-selected S-map models for the five focal species (panels top to bottom): Macrocystis adults, Macrocystis juveniles, Pterygophora, Laminaria, purple urchin, and red urchin. Each colored box represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on the modeled species across all data for a given model (white triangles: mean; vertical lines: median; box: interquartile range; whiskers extend to data point at most 1.5*IQR from the box). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, Strongylocentrotus purpuratus; P cal., Pterygophora californica; M. pyr, Macrocystis pyrifera; M. fra, Mesocentrotus franciscanus; L. far, Laminaria farlowii."}
 # Add sequential percent improvement measure to model selection tables
 back_selected_tables <- back_selected_tables %>% 
   purrr::map(function(x){
