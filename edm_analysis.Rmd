@@ -32,6 +32,7 @@ library(RANN)
 library(plot3D)
 library(ggsci)
 library(extrafont)
+library(cowplot)
 
 # plot theme
 plot_theme <-   theme_minimal()+
@@ -592,7 +593,10 @@ curves[c(10,12,13)] <- -0.2
 curves[c(9)] <- -0.1
 
 #plot
+# png("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_network.png",height=500,width=600)
+# pdf("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_network.pdf")
 plot(g2,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves,margin=0,vertex.size=20,rescale=T,edge.lty=1,edge.color=edge.cols,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="")
+# dev.off()
 ```
 
 In this network, each node represents a variable. The maximum number of outgoing interactions is 5 (6 total biological variables minus the variable itself), and incoming is 10 (5 biological and 5 physical variables). Algae species are in dark green, while the two urchin species are in purple and the physical drivers are in blue-green. Again, we see here as above that young *Macrocystis* (denoted M. pyr (j))is forced by all other variables in the system, but in turn shows a causal forcing on only 3 of the 5 other biological variables, and its forcing of *S. purpuratus* is very weak. Again we can see that while the web is not entirely saturated, there are many unidirectional forcings, and a prevalence of bidirectional causation as well (A forces B *and* B forces A). The adult *Macrocystis* is causally connected to all variables in the analysis.
@@ -949,7 +953,7 @@ all.mod.coeffs.plot.box <- all.mod.coeffs.long %>%
   facet_grid(mod_plotting_name~.,scales="free",space="free")
 
 all.mod.coeffs.plot.box
-# ggsave("plots/all_spp_coeffs.png",plot=all.mod.coeffs.plot.box,height=8,width=7.5)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_spp_coeffs.png",plot=all.mod.coeffs.plot.box,height=8,width=7.5)
 ```
 
 These are box-and-whisker plots of estimated species interaction strengths from S-map models for the five focal species (panels top to bottom): *Macrocystis* adults, *Macrocystis* juveniles, *Pterygophora*, *Laminaria*, purple urchin, and red urchin. Each colored box represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on a modeled species (right y-axis) across all data for a given model (white triangles: mean; vertical lines: median; box: interquartile range; whiskers extend to data point at most $1.5*IQR$ from the box). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, *Strongylocentrotus purpuratus*; P cal., *Pterygophora californica*; M. pyr, *Macrocystis pyrifera*; M. fra, *Mesocentrotus franciscanus*; L. far, *Laminaria farlowii*.
@@ -998,6 +1002,7 @@ all.phys.coeffs.plot <- all.mod.coeffs.long %>%
   theme(strip.background = element_blank(),
         strip.text = element_blank())
 all.phys.coeffs.plot
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_phys_coeffs.png",plot=all.phys.coeffs.plot,height=8,width=7.5)
 ```
 
 In this figure, each box represents the distribution of estimated effect of a physical driver (left y-axis) on the modeled species across all data for a given model. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index.
@@ -1009,11 +1014,74 @@ The physical variables are more influential drivers of *Macrocystis* than *Ptery
 For the purple urchin, the PDO, NPGO, and MEI all have on average negative but variable effects.
 
 ***
+### Distribution of Interaction Strengths by Type
 
+Grouping all of the above species interactions by type, we can investigate any overall patterns across models.
+
+```{r interactions density plot by type,fig.height=7,fig.width=6}
+# Density plot by interaction type
+interaction_distribution_by_type <- all.mod.coeffs.long %>%
+  filter(!is.na(type)) %>%
+  group_by(type) %>%
+  mutate(mean_int=mean(value,na.rm=T))%>%
+  ungroup()%>%
+  ggplot(aes(value,..density..,fill=type))+
+  geom_density(alpha=0.8,color=NA)+
+  # geom_density_ridges(alpha=0.8,scale=1.4)+
+  # stat_density_ridges(geom="density_ridges_gradient",calc_ecdf='true',quantiles=4,alpha=0.8,scale=1)+
+  # scale_fill_viridis_d(name="quantiles",alpha=0.8)+
+  geom_vline(xintercept=0,linetype=2)+
+  geom_vline(aes(xintercept=mean_int),color='black')+
+  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  scale_color_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  guides(fill=F,color=F)+
+  xlim(-1.5,1.5)+
+  labs(x="Interaction strength",y="Probability density",title="Distribution of Interaction Strengths by Type")+
+  facet_grid(rows=vars(type))
+
+interaction_distribution_by_type
+
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_density.png",plot=interaction_distribution_by_type)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_density.pdf",plot=interaction_distribution_by_type)
+```
+
+***
 ### Environmental Context and Algal Interactions
 A major observation from the multivariate models is that many interactions between species and between species and their environments can be variable (positive or negative, depending on conditions). For the algal species especially, the combination of variable interspecific interaction strengths and occasionally strong environmental forcing effects suggests that the strength of species interactions may be driven by environmental context.
 
-The difficulty with assigning direct relationships between individual environmental variables and particular species interactions lies in the fact that all interactions are context-dependent, and those contexts involve more than one environmental variable and species at a time. For example, we could hypothesize that *Macrocystis* may be a better competitor under elevated nutrient levels, indicated by high values of the NPGO index in the study area[@Bell2015]. Using our models, we can identify the *Macrocystis* interactions that occurred under high values of the NPGO, but these observations may be somewhat confounded with other elements of the environmental or ecological context at that particular time. Therefore, we use a state-space neighborhood averaging procedure, similar to[@Dixon1999], to temper the influence of individual observations and determine how environmental context may affect species interactions. For each model, we extract all estimated species interactions (coefficients from local Jacobians) [Note: remember, not all models contain all bi-directional species interactions, since we only retained species in each model that showed causal links through CCM analysis]. Then, for each estimated interaction, we find its 30 nearest neighbors in the multivariate model space---its 30 most similar environmental and biological contexts---and then calculate the average value of the interaction and of each environmental variable amongst those 30 neighbors. By doing this for all estimated interactions, we get an idea of the environmental contexts that give rise to stronger or weaker species interactions, while smoothing across individual contexts.
+We can observe some coherence between some estimated species interactions and environmental variables. For example, the North Pacific Gyre Oscillation index is one environmental variable driving all of the algal species in our analysis. The figure below shows how the NPGO varies, as well as time series of the estimated effects of *Laminaria* and *Pterygophora* on *Macrocystis* recruits. Immediately, the time-varying effects of the two understory species on the recruitment of *Macrocystis* are evident, as well as their apparent (if complex) coherence with fluctuations in the NPGO index.
+
+```{r ymac ints ts,fig.width=8,fig.height=4}
+ymac_ints_ts <- all.mod.coeffs.long %>% 
+  filter(mod=='ymac',type%in% c('instraspecies','algal competition'),effect!='ymac') %>% 
+  group_by(effect,plotting,period) %>% 
+  summarise(meanval=mean(value,na.rm=T)) %>% 
+  distinct() %>% 
+  left_join(periods.first)
+
+# join NPGO
+npgo_ts<-westend %>%
+  ungroup()%>%
+  slice(1:63)%>%
+  select(period,npgo)%>%
+  left_join(periods.first,by="period")
+
+ymac_ints_ts <- ymac_ints_ts %>% left_join(npgo_ts,by=c('period','date_str'))
+
+ymac_ints_plot <- ggplot(ymac_ints_ts,aes(date_str,meanval,col=plotting))+
+  geom_line(size=1.5)+
+  scale_color_npg()+
+  geom_hline(yintercept=0,linetype=2)+
+  labs(x="Year",y="Effect on Macrocystis <1m",color="Interacting\nSpecies")
+ymac_ints_npgo_plot <- ymac_ints_plot+
+  geom_line(aes(y=npgo*0.5),col='darkgreen',size=1,linetype=2)+
+  scale_y_continuous(sec.axis=sec_axis(~./0.5,name="NPGO"))
+ymac_ints_npgo_plot
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.png",plot=ymac_ints_npgo_plot,h=4,w=8)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.pdf",plot=ymac_ints_npgo_plot,h=4,w=8)
+```
+
+Next, we seek to formalize the comparison of species interactions with varying environmental contexts. The difficulty with assigning direct relationships between individual environmental variables and particular species interactions lies in the fact that all interactions are context-dependent, and those contexts involve more than one environmental variable and species at a time. For example, we could hypothesize that *Macrocystis* may be a better competitor with *Laminaria* and *Pterygophora* under elevated nutrient levels, indicated by high values of the NPGO index in the study area[@Bell2015]. Using our models, we can identify the *Macrocystis* interactions that occurred under high values of the NPGO, but these observations may be somewhat confounded with other elements of the environmental or ecological context at that particular time (e.g. whether the high NPGO values co-occur with high versus low SST values). Therefore, we use a state-space neighborhood averaging procedure, similar to[@Dixon1999], to temper the influence of individual observations and determine how environmental context may affect species interactions. For each model, we extract all estimated species interactions (coefficients from local Jacobians) [Note: remember, not all models contain all bi-directional species interactions, since we only retained species in each model that showed causal links through CCM analysis]. Then, for each estimated interaction, we find its 30 nearest neighbors in the multivariate model space---its 30 most similar environmental and biological contexts---and then calculate the average value of the interaction and of each environmental variable amongst those 30 neighbors. By doing this for all estimated interactions, we can observe the general environmental contexts that give rise to stronger or weaker species interactions, while smoothing across individual observations.
 
 ```{r neighborhood averaging}
 # Join the original densities of species and values of to the interactions data, in order to calculate nearest neighbors
@@ -1070,21 +1138,21 @@ find_neighbors <- function(int_df,model,eff,num_neighbors=30) {
 }
 
 # Here's an example
-pter_mac_contexts <- find_neighbors(int_df=all.mod.coeffs.with.contexts,model='pter',eff='mac',num_neighbors = 30)
-pter_mac_contexts %>% 
-  filter(context_var %in% paste0(phys.vars,'_avg')) %>% 
-  ggplot(aes(context_avg,value_avg,color=label))+
-  geom_point(size=1)+
-  geom_smooth(color='black')+
-  geom_hline(yintercept=0,linetype=2)+
-  facet_wrap(~label)+
-  scale_color_npg(guide='none')+
-  xlim(NA,2)+
-  labs(x='Average Context Value',y="Average Macrocystis Effect on Pterygophora")
+# pter_mac_contexts <- find_neighbors(int_df=all.mod.coeffs.with.contexts,model='pter',eff='mac',num_neighbors = 30)
+# pter_mac_contexts %>% 
+#   filter(context_var %in% paste0(phys.vars,'_avg')) %>% 
+#   ggplot(aes(context_avg,value_avg,color=label))+
+#   geom_point(size=1)+
+#   geom_smooth(color='black')+
+#   geom_hline(yintercept=0,linetype=2)+
+#   facet_wrap(~label)+
+#   scale_color_npg(guide='none')+
+#   xlim(NA,2)+
+#   labs(x='Average Context Value',y="Average Macrocystis Effect on Pterygophora")
 ```
-For this example, we can see that the effect of adult *Macrocystis* on *Pterygophora* varies with environmental context. For instance, at high values of the MEI (i.e., El Nino conditions), the effect of *Macrocystis* can switch from facilitative to competitive. But, the relationship of the *Macrocystis* effect to other environmental variables is less straightforward. *Macrocystis* has its most negative estimated effect on *Pterygophora* during positive but intermediate phases of the PDO and NPGO, while near the highest observed values of the PDO, NPGO, and SST, the effect of *Macrocystis* on *Pterygophora* is positive.
+<!-- In this example, we can see that the effect of adult *Macrocystis* on *Pterygophora* varies with environmental context. For instance, at high values of the MEI (i.e., El Nino conditions), the effect of *Macrocystis* can switch from facilitative to competitive. But, the relationship of the *Macrocystis* effect to other environmental variables is less straightforward. *Macrocystis* has its most negative estimated effect on *Pterygophora* during positive but intermediate phases of the PDO and NPGO, while near the highest observed values of the PDO, NPGO, and SST, the effect of *Macrocystis* on *Pterygophora* is positive. -->
 
-We can use the above method to look at the environmental context underlying shifts in the relationships between *Macrocystis*, *Pterygophora*, and *Laminaria*. This is a subset of the CCM interaction network shown above, pickingout the relationships between the four algae variables included in the analysis.
+We can use the state-space neighborhood-averaging method to look at the environmental context underlying shifts in the relationships between *Macrocystis*, *Pterygophora*, and *Laminaria*. This is a subset of the CCM interaction network shown above, picking out the relationships between the four algae variables included in the analysis.
 
 ```{r mei effect on ints,echo=FALSE}
 connect.mat.algae <- t(westend.ptot.mat)[c('lam','mac','pter','ymac'),c('lam','mac','pter','ymac')]
@@ -1111,16 +1179,19 @@ edge.cols.algae<-round((edge.weights.algae-min(edge.weights.algae))/(max(edge.we
 edge.cols.algae[edge.cols.algae==101] <- 100
 edge.cols.algae <- edge.pal[edge.cols.algae]
 
+# Edge labels
+E(g3)$name
 
 curves.algae <- rep(0,length(edge.weights.algae))
 curves.algae[c(1,2,3,8)] <- -0.3
 
-
-plot(g3,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves.algae, margin=0,vertex.size=40,rescale=T,edge.lty=1,edge.color=edge.cols.algae,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="")
-
+# png("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_algae_network.png",height=500,width=500)
+# pdf("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_algae_network.pdf")
+plot(g3,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves.algae, margin=0,vertex.size=40,rescale=T,edge.lty=1,edge.color=edge.cols.algae,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="",edge.label=c('d','e','b','h','g','a','f','c'),edge.label.color='black',edge.label.cex=1.2)
+dev.off()
 ```
 
-Let's see how environmental context alters the strength and direction of interactions between these variables, using the neighborhood-averaging technique described above[@Dixon1999].
+Here, we see how the strength and direction of estimated interactions varies across environmental contexts.
 
 ```{r apply neighborhood avg}
 algae.causal.ints <- tibble(spp=c('mac','ymac','pter','lam')) %>% 
@@ -1189,8 +1260,8 @@ algae_causal_contexts  %>%
   labs(x='Average SWH Value',y="Average Species Effect",title="SWH")
 
 #PDO
-algae_causal_contexts  %>% 
-  filter(context_var=="pdo_avg") %>% 
+algae_causal_contexts  %>%
+  filter(context_var=="pdo_avg") %>%
   ggplot(aes(context_avg,value_avg,col=effect_plotting_name))+
   # stat_summary_bin(fun.y='mean',geom='bar',breaks = breaks)+
   geom_point(size=0.8,alpha=0.8)+
@@ -1215,11 +1286,11 @@ algae_causal_contexts  %>%
 
 ### Environmental Stress and Algal Interactions
 
-We can proceed one step further and use the neighborhood-averaged contexts above to investigate the relationship between physical and biological interactions. It has been theorized that species interactions may become increasingly positive (facilitative) under increasingly stressful environmental conditions. This theory, known as the Stress Gradient Hypothesis (SGH[@Bertness1993]), posits that the benefits of species coexistence may begin to outweigh the costs of competition as environmental stress rises. The SGH has been supported by empirical research in terrestrial plant communities, but has been less studied in marine systems[@Bulleri2009] (although see[@Bennett2015]).
+We can proceed one step further and use the neighborhood-averaged contexts above to investigate the relationship between physical and biological interactions. In other words, we can directly compare neighborhood-averaged Jacobian elements to each other, e.g. to see if there is evidence that algal competition varies with the *effect* of the environment on the algal species, not just with the ambient value of environmental variables . This step allows us to determine whether there is evidence for the Stress Gradient Hypothesis (SGH[@Bertness1993]), which posits that the benefits of species coexistence may begin to outweigh the costs of competition as environmental stress rises. The SGH has been supported by empirical research in terrestrial plant communities, but has been less studied in marine systems[@Bulleri2009] (although see[@Bennett2015]).
 
-In an EDM framework, we can investigate the SGH through the lens of our estimated interactions: Does facilitation between algal species become more common as the negative effects of adverse environmental conditions become more severe? To address this question, we compare the effect of environmental variables against the effect of species interactions.
+In an EDM framework, we can investigate the SGH through the lens of our estimated interactions: Does facilitation between algal species become more common as the negative effects of adverse environmental conditions become more severe? To address this question, we compare the effects of environmental variables against the effects of species interactions. Specifically, CCM analysis showed the two environmental drivers (NPGO and PDO) and one herbivore (purple urchin) are causal drivers of the dynamics of all of the included algal species. The figures below show how the strength of each species interaction in the algal network varies with the impact of the NPGO, PDO, and purple urchin density.
 
-```{r jacobian vs jacobian,fig.height=8,fig.width=6}
+```{r jacobian vs jacobian,fig.height=8,fig.width=6,warning=F}
 # plot comparison function
 plot_jacobian_comparison <- function(model,eff1,eff2){
   
@@ -1234,17 +1305,18 @@ plot_jacobian_comparison <- function(model,eff1,eff2){
   name1 <- namekey$long[match(eff1,namekey$short)]
   name2 <- namekey$long[match(eff2,namekey$short)]
   modname <- namekey$long[match(model,namekey$short)]
-
+  
   dat %>% 
     ggplot(aes_string(paste0("eff_",eff2),paste0("eff_",eff1)))+
     geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=minmax[3],ymax=0,fill='salmon')+
     geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=0,ymax=minmax[4],fill='mediumseagreen')+
-    geom_point(size=0.5)+
+    geom_point(size=0.5,col='gray30')+
     # geom_smooth(col='gray50')+
     # annotate("text",x = minmax[1]+0.3,y=0.1,label="Facilitation",size=4,family="Times New Roman")+
     # annotate("text",x = minmax[1]+0.3,y=-0.1,label="Competition",size=4,family="Times New Roman")+
     geom_hline(yintercept=0,linetype=2)+
     geom_vline(xintercept=0,linetype=2)+
+    geom_smooth(se=F,col='black',method='loess',formula = 'y~x')+
     labs(x=paste0('Effect of\n',name2),
          y=paste0('Effect of \n',name1),
          title=paste0("Interacting Effects on ",modname))+
@@ -1255,58 +1327,31 @@ plot_jacobian_comparison <- function(model,eff1,eff2){
           axis.title=element_text(size=10))
 }
 
-# NPGO and algal ints
-p1<-plot_jacobian_comparison('lam','pter','npgo')+geom_smooth(se=F)
+# NPGO, PDO, and Purple Urchin
+jacobian_comparisons <- tibble(mod=rep(c('lam','lam','lam','mac','ymac','ymac','ymac','pter'),3),
+                               eff1=rep(c('pter','mac','ymac','lam','lam','pter','mac','mac'),3),
+                               eff2=c(rep('npgo',8),rep('pdo',8),rep('purp',8)))
+jacobian_comparisons <- jacobian_comparisons %>% 
+  mutate(plot=purrr::pmap(list(mod,eff1,eff2),function(x,y,z) plot_jacobian_comparison(x,y,z)))
 
-p2<-plot_jacobian_comparison('lam','mac','npgo')+geom_smooth(se=F)
+npgo_plots <- jacobian_comparisons %>% slice(1:8) %>% pull() %>% plot_grid(plotlist=.,nrow=4,ncol=2,labels=letters[1:8])
+pdo_plots <- jacobian_comparisons %>% slice(9:16) %>% pull() %>% plot_grid(plotlist=.,nrow=4,ncol=2,labels=letters[1:8])
+purp_plots <- jacobian_comparisons %>% slice(17:24) %>% pull() %>% plot_grid(plotlist=.,nrow=4,ncol=2,labels=letters[1:8])
 
-p3<-plot_jacobian_comparison('mac','lam','npgo')+geom_smooth(se=F)
+npgo_plots
+pdo_plots
+purp_plots
 
-p4<-plot_jacobian_comparison('ymac','lam','npgo')+geom_smooth(se=F)
-
-p5<-plot_jacobian_comparison('ymac','pter','npgo')+geom_smooth(se=F)
-
-p6<-plot_jacobian_comparison('ymac','mac','npgo')+geom_smooth(se=F)
-
-p7<-plot_jacobian_comparison('pter','mac','npgo')+geom_smooth(se=F)
-
-grid.arrange(p1,p2,p3,p4,p5,p6,p7,nrow=4)
-
-# PDO and algal ints
-
-p8<-plot_jacobian_comparison('lam','pter','pdo')+geom_smooth(se=F)
-
-p9<-plot_jacobian_comparison('lam','mac','pdo')+geom_smooth(se=F)
-
-p10<-plot_jacobian_comparison('mac','lam','pdo')+geom_smooth(se=F)
-
-p11<-plot_jacobian_comparison('ymac','lam','pdo')+geom_smooth(se=F)
-
-p12<-plot_jacobian_comparison('ymac','pter','pdo')+geom_smooth(se=F)
-
-p13<-plot_jacobian_comparison('ymac','mac','pdo')+geom_smooth(se=F)
-
-p14<-plot_jacobian_comparison('pter','mac','pdo')+geom_smooth(se=F)
-
-grid.arrange(p8,p9,p10,p11,p12,p13,p14,nrow=4)
-
-# Purple urchin and algal ints
-p15<-plot_jacobian_comparison('lam','pter','purp')+geom_smooth(se=F)
-
-p16<-plot_jacobian_comparison('lam','mac','purp')+geom_smooth(se=F)
-
-p17<-plot_jacobian_comparison('mac','lam','purp')+geom_smooth(se=F)
-
-p18<-plot_jacobian_comparison('ymac','lam','purp')+geom_smooth(se=F)
-
-p19<-plot_jacobian_comparison('ymac','pter','purp')+geom_smooth(se=F)
-
-p20<-plot_jacobian_comparison('ymac','mac','purp')+geom_smooth(se=F)
-
-p21<-plot_jacobian_comparison('pter','mac','purp')+geom_smooth(se=F)
-
-grid.arrange(p15,p16,p17,p18,p19,p20,p21,nrow=4)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_jacobians.png",npgo_plots,h=8,w=6)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/pdo_jacobians.png",pdo_plots,h=8,w=6)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/purp_jacobians.png",purp_plots,h=8,w=6)
 ```
+
+In the first figure, there are clear relationships between the effect of the NPGO and the strength of the interactions between algal species. For example, for *Laminaria*, there is evidence for the SGH in its relationship to *Pterygophora* and adult *Macrocystis* (panels a and b). As the NPGO's beneficial effect on *Laminaria* increase, competition with *Pterygophora* and *Macrocystis* intensifies. Conversely, under the presumably stressful conditions associated with negative impacts of the NPGO on *Laminaria*, facilitation is observed. This phenomenon is also clear in the effect of the NPGO and PDO on adult *Macrocystis* (panel g).
+
+However, there is evidence of the opposite relationship as well, whereby the strengths of environmental forcing and species interactions are positively rather than negatively associated. Unlike the effect of the NPGO, the positive effects of the PDO on *Laminaria* are associated with an amelioration of *Laminaria*'s negative interaction with *Macrocystis* (panel b), and a positive effect of *Pterygophora*(panel a). Also interesting is the relationship between environmental context and drivers of *Macrocystis* recruitment (panels d-g). When NPGO conditions are poor for *Macrocystis* sporophytes, we also observe intensified negative impacts of *Pterygophora* and *Laminaria* on *Macrocystis* and an increasingly negative intraspecific effect of adult *Macrocystis*. Some algal species interactions seem to be less sensitive to particular environmental contexts, such as the effect of adult *Macrocystis* on *Pterygophora* (panel h).
+
+The relationships of algal species interaction strength with herbivory are less clear. The last set of panels above shows how algal species interactions vary with the effects of the purple urchin *S. purpuratus* on each algae species. Under the SGH and related logic, we might expect that a greater negative effect of herbivory would decrease competition and increase facilitation between the algae species as a result of associative protection from herbivory[@Harris1984]. Instead, we do not observe a strong association between the strength of herbivory and the strength of algal interactions, with a couple of exceptions. There is evidence that as *Laminaria* is more negatively affected by *S. purpuratus*, it is positively affected by the presence of *Macrocystis* recruits (panel c). In turn, *Laminaria*'s negative effect on adult *Macrocystis* intensifies with increased herbivory pressure (panel d).
 
 ## 7. Supplementary Analysis- Multivariate Model Selection
 
@@ -1527,282 +1572,5 @@ mod.full.selected.comp %>%
 ```
 
 Given this consistency of the full and backwards-selected models for all species, we can be confident that the choice of the particular variables to include in the multivariate S-maps is not causing spurious or inconsistent results for estimated species interactions, despite the exclusion of some variables in the backwards-selected models.
-
-### Species-only Models
-A major observation from the multivariate models is that many interactions between species and between species and their environments can be variable (positive or negative, depending on conditions). For the algal species especially, the combination of variable interspecific interaction strengths and occasionally strong environmental forcing effects suggests that the strength of species interactions may be driven by environmental context.
-
-In order to observe this, we remove physical forcings and re-run the multivariate models with just the species interactions, and then look at the resulting trends through the lens of various physical forcings without having those forcings included in the models (to remove endogeneity). We will investigate the effect of environmental variables on interaction strength for the different interaction types (herbivory, competition, and intraspecies effects).
-
-```{r model spp_only,warning=F}
-# remove physical variables from predictors then run models
-causal.vars.spp <- purrr::map(westend.causal.vars,function(x) setdiff(x,phys.vars))
-multi.mods.spp.only <- purrr::map(list("mac","purp","lam","ymac","red","pter"),function(x) {
-  smap_multi(westend,westend.segs,x,causal.vars.spp[[x]])
-})
-names(multi.mods.spp.only) <- c("mac","purp","lam","ymac","red","pter")
-```
-
-```{r,fig.height=8,fig.width=7.5}
-# collect model performance statistics
-spp.only.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria","Young Macrocystis","Red Urchin","Pterygophora"),
-                             Predictors=purrr::map(causal.vars.spp,.f=function(x){
-                               y=namekey$long[match(x,namekey$short)];paste(y,sep=",",collapse=", ")}),
-                             Rho = map_dbl(multi.mods.spp.only,function(x) x$model$rho),
-                             MAE=map_dbl(multi.mods.spp.only,function(x) x$model$mae),
-                             mod=c("mac","purp","lam","ymac","red","pter"))
-# write_csv(spp.only.model.perf,"data/spp_only_model_perf.csv")
-spp.only.model.perf %>% select(-mod) %>% 
-  kable("html",col.names = c("Modeled Species","Predictors","$\\rho$","MAE"),digits=3,escape=F) %>%
-  kable_styling(full_width = F) %>%
-  column_spec(1,bold=T)%>%
-  column_spec(2, width = "30em")
-
-# Join all coefficients
-spp.only.mod.coeffs <- purrr::map(names(multi.mods.spp.only),function(x){
-  multi.mods.spp.only[[x]][["coeffs.long"]] %>% mutate(mod=x)
-  }
-  )%>%
-  bind_rows() %>%
-  mutate(mod_plotting_name = namekey$long[match(mod,namekey$short)])
-
-
-# assign interaction types: competition, herbivory (effect of urchins on algae), consumption (effect of algae on urchin), or growth
-algaes<-c("lam","mac","pter","ymac")
-urchins <- c("red","purp")
-combinations <- expand.grid(study_spp,study_spp) %>% 
-  rename(mod=Var1,effect=Var2) %>%
-  select(mod,effect)%>%
-  mutate(type = case_when(
-    mod ==   effect ~ "intraspecies",
-    mod == "mac" & effect == "ymac" ~ "intraspecies",
-    mod == "ymac" & effect == "mac" ~ "intraspecies",
-    mod %in% algaes & effect %in% algaes ~ "algal competition",
-    mod %in% urchins & effect %in% urchins ~ "urchin competition",
-    mod %in% algaes & effect %in% urchins ~ "herbivory",
-    mod %in% urchins & effect %in% algaes ~ "consumption",
-    TRUE ~ "NA"
-    ),
-    type=factor(type,levels=c("algal competition","urchin competition","herbivory","consumption","intraspecies")),
-    spp_type = case_when(
-      mod %in% algaes ~ "algae",
-      mod %in% urchins ~ "urchin",
-      TRUE ~ "none"
-    )
-  ) %>%
-  mutate_at(vars(mod,effect),as.character)
-
-# add rho label for facet plotting
-mod_rho_labels <- spp.only.model.perf %>%
-  mutate(label1="rho==",Rho_round=round(Rho,2))%>%
-  unite(label,label1,Rho_round,sep="",remove=F)%>%
-  select(mod,label)
-
-spp.only.mod.coeffs %>%
-  #add the type of interaction
-  left_join(combinations,by=c("mod","effect"))%>%
-  left_join(mod_rho_labels,by="mod") -> spp.only.mod.coeffs
-
-# boxplot of all species interactions
-spp.only.mod.coeffs.plot.box <- spp.only.mod.coeffs %>%
-   filter(effect %in% study_spp) %>%
-  #plot
-  ggplot(aes(x=plotting,y=value,fill=type))+
-  geom_boxplot(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
-  stat_summary(fun.y=mean, colour="white", geom="point", 
-               shape=17, size=2,show.legend = FALSE)+
-  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
-  geom_hline(yintercept=0,linetype=2)+
-  geom_text(aes(x=1.2,y=1.8,label=label),size=4, parse=T,check_overlap=TRUE,show.legend = FALSE)+
-  ylim(-2,2)+
-  coord_flip()+
-  labs(y="Estimated Interaction Coefficient",x="Interacting Species")+
-  facet_grid(mod_plotting_name~.,scales="free_y",space="free")
-
-spp.only.mod.coeffs.plot.box
-```
-
-```{r mean interactions, fig.height=8,fig.width=7.5}
-## Mean interactions vs. physical conditions
-# join all original density variables to interaction data
-
-spp.only.coeffs.with.phys<- westend %>%
-  select(one_of(c(phys.vars,"period"))) %>%
-  distinct() %>%
-  right_join(filter(spp.only.mod.coeffs,!is.na(type)),by="period")%>%
-  gather("external_forcing","ext_value",one_of(phys.vars))
-
-```
-
-### Distribution of Interaction Strengths by Type
-
-Grouping all of the above species interactions by type, we can investigate any overall patterns across models.
-
-```{r interactions density plot by type,fig.height=7,fig.width=6}
-# Density plot by interaction type
-interaction_distribution_by_type <- spp.only.mod.coeffs %>%
-  filter(!is.na(type)) %>%
-  group_by(type) %>%
-  mutate(mean_int=mean(value,na.rm=T))%>%
-  ungroup()%>%
-  ggplot(aes(value,..density..,fill=type))+
-  geom_density(alpha=0.8,color=NA)+
-  # geom_density_ridges(alpha=0.8,scale=1.4)+
-  # stat_density_ridges(geom="density_ridges_gradient",calc_ecdf='true',quantiles=4,alpha=0.8,scale=1)+
-  # scale_fill_viridis_d(name="quantiles",alpha=0.8)+
-  geom_vline(xintercept=0,linetype=2)+
-  geom_vline(aes(xintercept=mean_int),color='black')+
-  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
-  scale_color_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
-  guides(fill=F,color=F)+
-  xlim(-1.5,1.5)+
-  labs(x="Interaction strength",y="Probability density",title="Distribution of Interaction Strengths by Type")+
-  facet_grid(rows=vars(type))
-
-interaction_distribution_by_type
-```
-
-***
-    
-### Example: Effect of Macrocystis on Pterygophora
-
-We can investigate patterns in specific interactions by looking at how their strength and direction vary across environmental gradients. Here, we look at whether there are patterns in an important kelp forest interaction---the effect of *Macrocystis* on *Pterygophora*.
-
-```{r mac pter,fig.width=6,fig.height=6}
-mac_effect_on_pter <-spp.only.coeffs.with.phys %>%
-  ungroup()%>%
-  filter(mod=="pter",effect=="mac")%>%
-  mutate(phys_high_low=case_when(
-    ext_value > 1 ~ "high",
-    ext_value < -1 ~ "low")) %>%
-  filter(!is.na(phys_high_low))%>%
-  left_join(select(westend,period,one_of(phys.vars),red),by="period")%>%
-  group_by(type,external_forcing,phys_high_low)%>%
-  mutate(mean_int=mean(value,na.rm=T))%>%
-  distinct()%>%
-  ungroup()
-
-# physical forcings labeller
-phys.labeller <- c(
-  mei= "MEI",
-  npgo= "NPGO",
-  pdo= "PDO",
-  sst="SST",
-  waves="SWH"
-)
-
-mac_effect_on_pter_plot <-mac_effect_on_pter %>%
-  select(-red) %>% distinct() %>%
-ggplot(aes(value,..density..,fill=phys_high_low))+
-  geom_density(col=NA,alpha=0.6)+
-  geom_vline(xintercept=0,linetype=2)+
-  geom_vline(aes(xintercept=mean_int,color=phys_high_low),size=1.5)+
-  scale_fill_manual(values=c("darkorange","dodgerblue4"),name="Physical\nForcing Value",labels=c("high","low"))+
-  scale_color_manual(values=c("darkorange","dodgerblue4"))+
-  guides(color="none")+
-  labs(x="Effect of Macrocystis on Pterygophora",y="Probability Density", title="Varying Interaction Strength across Environmental Gradients\n(n=520 interactions for each box)")+
-  facet_grid(rows=vars(external_forcing),labeller=labeller(external_forcing=phys.labeller))+
-  theme(strip.text=element_text(size=10))
-
-mac_effect_on_pter_plot
-```
-
-### Example: Effect of Pterygophora on Macrocystis
-
-We can investigate the interspecific interactions in the other direciton as well: that is, the effect of *Pterygophora* on *Macrocystis*.
-
-```{r pter effect ymac,fig.height=6,fig.width=6}
-pter_effect_ymac <-spp.only.coeffs.with.phys %>%
-  ungroup()%>%
-  filter(mod=="ymac",effect=="pter")%>%
-  mutate(phys_high_low=case_when(
-    ext_value > 1 ~ "high",
-    ext_value < -1 ~ "low")) %>%
-  filter(!is.na(phys_high_low))%>%
-  left_join(select(westend,period,one_of(phys.vars)),by="period")%>%
-  group_by(type,external_forcing,phys_high_low)%>%
-  mutate(mean_int=mean(value,na.rm=T))%>%
-  distinct()%>%
-  ungroup()
-
-# physical forcings labeller
-phys.labeller <- c(
-  mei= "MEI",
-  npgo= "NPGO",
-  pdo= "PDO",
-  sst="SST",
-  waves="SWH"
-)
-
-pter_effect_ymac_plot <-pter_effect_ymac %>%
-ggplot(aes(value,..density..,fill=phys_high_low))+
-  geom_density(col=NA,alpha=0.6)+
-  geom_vline(xintercept=0,linetype=2)+
-  geom_vline(aes(xintercept=mean_int,color=phys_high_low),size=1.5)+
-  scale_fill_manual(values=c("darkorange","dodgerblue4"),name="Physical\nForcing Value",labels=c("high","low"))+
-  scale_color_manual(values=c("darkorange","dodgerblue4"))+
-  scale_x_continuous(limits=c(-1.5,1))+
-  guides(color="none")+
-  labs(x="Effect of Pterygophora on ymacrocystis Recruits",y="Probability Density")+
-  facet_grid(rows=vars(external_forcing),labeller=labeller(external_forcing=phys.labeller))+
-  theme(strip.text=element_text(size=10))
-
-# ggsave("plots/pter_effect_ymac_phys.png",plot=pter_effect_ymac_plot,h=6,w=6,dpi=500)
-# ggsave("plots/pter_effect_ymac_phys.pdf",plot=pter_effect_ymac_plot,h=6,w=6)
-pter_effect_ymac_plot
-```
-
-Surprisingly, at this site, it seems that *Macrocystis* generally has a neutral to positive effect on *Pterygophora*, a result seemingly incongruous with the established competitive hierarchy. However, the study site (a small offshore island) is highly exposed to strong currents and winter storms, partly because it is composed of low-rugosity reefs. These habitat characteristics are known to reduce the ability of *Macrocystis* to be competitively dominant [@Dayton1984;@Graham2007c]. Our findings strongly suggest that *Macrocystis* competitive dominance is quite rare at this site, or at the very least is outweighed by facilitation in most instances. After splitting the estimated species interactions by those that took place under “low” versus “high” values of the five oceanographic indices (greater than 1 standard deviation below or above the mean conditions in the raw oceaongraphic data), it immediately becomes clear that strong negative effects of *Macrocystis* on *Pterygophora* only occur under low values of the MEI, PDO, and SST, or high values of the NPGO. These are all climate regimes associated with increased availability of nutrients in southern California. Hence, despite the weak mean interaction and common facilitation by *Macrocystis* at this site, the rare negative effects of Macrocystis on Pterygophora conform to expected patterns across decadal-scale climate shifts.
-
-### Algal competition and herbivory under different environmental contexts
-
-As a final look at the plasticity of species interactions across environmental gradients, we can gather all of the estimated species interactions from our multispecies models, and, like we do for the *Macrocystis-Pterygophora* example above, categorize the data by:
-
-* What environmental context they took place under (highly negative, normal, or highly positive), indicated by normalized values of less than -1, between -1 and 1, and greater than 1, respectively.
-
-* Whether the measured is negative, positive, or not significantly different than neutral.
-
-In the figure below, each bar represents the percentage of each species’ effects that are significantly positive or negative (effects not significantly different than zero not shown). Note varying scale on y-axis.
-
-```{r algal comp context,fig.width=8,fig.height=6}
-# pull out all estimate algal competition coefficients and establish whether they're neutral
-alg_comp <- spp.only.mod.coeffs %>%
-  filter(type %in% c("algal competition","herbivory"))%>%
-  mutate(neutral=ifelse(lower<0 & upper>0,1,0))%>%
-  left_join(select(westend,period,one_of(phys.vars)),by="period") %>% distinct()%>%
-  select(mod,effect,long,plotting,value,neutral,one_of(phys.vars))
-
-alg_comp_contexts_simple <- alg_comp%>%
-  mutate_at(vars(one_of(phys.vars)),function(x) {case_when(
-    x < -1 ~ "Neg",
-    x < 1 & x > -1 ~ "Norm",
-    x > 1 ~ "Pos"
-  )
-    })%>%
-  gather("driver","context",mei:sst)%>%
-  mutate(context=factor(context,levels=c("Neg",'Norm','Pos')))%>%
-  distinct()%>%
-  group_by(long,plotting,effect,driver,context)%>%
-  summarise(n=n(),perc_negative=sum(neutral==0 & value<0)/n()*-100,perc_positive=sum(neutral==0 & value>0)/n()*100,
-            perc_neutral=sum(neutral)/n()*100, perc_nonneutral=sum(neutral==0)/n()*100)%>%
-  ungroup()%>%
-  filter(perc_neutral<100,!is.na(context),effect!='ymac')%>%
-  gather("comp_or_mutualism","prevalance",perc_negative:perc_positive)%>%
-  ungroup()%>%
-  arrange(effect)
-
-competition_herbivory_context_plot <- alg_comp_contexts_simple%>%
-  filter(effect != "pter")%>%
-  ggplot(aes(context,prevalance,fill=comp_or_mutualism))+
-  geom_col(color=NA)+
-  scale_y_continuous(breaks=seq(-60,60,by=10),labels=c(60,50,40,30,20,10,0,10,20,30,40,50,60))+
-  scale_fill_npg(labels=c("Negative","Positive"),name="Interaction Direction")+
-  labs(x="Level of Physical Driver",y="Percent of Estimated Interactions")+
-  facet_grid(long~driver,labeller = labeller(driver=phys.labeller),scales="free")
-competition_herbivory_context_plot
-```
-
-There are a number of interesting patterns that emerge when the model outputs are organized in this manner. For example, while red urchin *M. franciscanus* herbivory is a strong negative effect (high percentage of significantly negative interactions) under all conditions, the purple urchin, *S. purpuratus*, has a stronger effect in higher-nutrient contexts (low MEI, PDO, and SST). Additionally, *Laminaria farlowii* is a demonstrably a better competitor under conditions that are stressful to *Macrocystis*, including low-nutrient, high-temperature, and high-disturbance regimes38. Also clear in the figure is, again, the role of *Macrocystis* as both competitor and facilitator. Under El Niño conditions, or strong positive phases of the PDO, *Macrocystis* acts more as a facilitator than a competitor with the other brown algae species, and likewise for low levels of physical disturbance. Only when sufficient nutrients are available under La Niña conditions or low under sea  surface temperatures does Macrocystis have predominantly negative effects on the other algae species. The precise mechanisms behind the balancing of positive and negative effects of *Macrocystis* cannot be determined directly from these results, but it is clear that the effective role of this key foundation species shifts with environmental context.
-
-Beginning with a published monitoring data set from a kelp forest ecosystem, EDM methods helped to elucidate causation, build interaction networks, and investigate the influence of large-scale environmental drivers on interaction strength. In this particular ecosystem, our analyses of time series data confirmed decades of experimental work regarding the foundation species *Macrocystis pyrifera*, but also were able to contextualize those classic interactions as they apply at the study site to when they were important.
 
 ## References
