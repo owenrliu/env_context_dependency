@@ -22,28 +22,39 @@ knitr::opts_chunk$set(echo = FALSE,warning=FALSE,message = FALSE,results = 'asis
 # Load required packages (if these are not installed on your system, use `install.packages()`)
 library(tidyverse)
 library(here)
+library(lubridate)
 library(rEDM)
 library(igraph)
 library(quantreg)
 library(knitr)
 library(kableExtra)
+library(grid)
+library(png)
 library(gridExtra)
 library(RANN)
 library(plot3D)
 library(ggsci)
 library(extrafont)
 library(cowplot)
+library(magick)
 
 # plot theme
 plot_theme <-   theme_minimal()+
-  theme(text=element_text(family="Gill Sans MT",size=12,color="black"),
+  theme(text=element_text(family="sans",size=12,color="black"),
         legend.text = element_text(size=14),
-        axis.title=element_text(family="Gill Sans MT",size=14),
-        axis.text=element_text(family="Gill Sans MT",size=8),
+        axis.title=element_text(family="sans",size=14),
+        axis.text=element_text(family="sans",size=8),
         strip.background = element_rect(colour="black"),
         panel.border = element_rect(color="black",fill=NA))
 
 theme_set(plot_theme)
+
+# color blind friendly palettes
+cols3A <- viridis_pal(begin=0,end=0.8,option="A")(4)[1:3]
+cols4A <- viridis_pal(begin=0,end=0.8,option="A")(4)
+cols3D <- viridis_pal(begin=0,end=0.8)(4)[1:3]
+cols4D <- viridis_pal(begin=0,end=0.8)(4)
+
 ```
 
 ## Introduction
@@ -106,7 +117,7 @@ Usual best practice for EDM is to create normalized time series, so that state-s
 We join the monitoring and physical datasets and normalize all time series (see `produce_final_data.R`):
 
 ```{r load data, message=FALSE,echo=F}
-source("data/data preparation scripts/produce_final_data.R")
+source("data/data preparation scripts/produce_final_data.R",local=knitr::knit_global())
 ```
 
 ```{r list of variables,echo=F,fig.cap="List of variables"}
@@ -151,22 +162,42 @@ westend.meandens <- westend.long %>%
 
 # position adjustment for visual clarity
 pd <- position_dodge(width=100)
-westend.mean_dens_plot <- westend.meandens %>%
-  filter(spp %in% c("mac","red","pter","ymac","purp","lam")) %>%
-  mutate(type=ifelse(spp %in% c("mac","ymac","pter","lam"),"algae","urchin")) %>%
-  ggplot(aes(x=date_str,y=meandens,col=long,linetype=type))+
+westend.mean_urchin_dens_plot <- westend.meandens %>%
+  filter(spp %in% c("red","purp")) %>%
+  # mutate(type=ifelse(spp %in% c("mac","ymac","pter","lam"),"algae","urchin")) %>%
+  ggplot(aes(x=date_str,y=meandens,col=long))+
       geom_hline(yintercept=0)+
-      geom_line(lwd=2,alpha=0.8,position=pd)+
+      geom_line(lwd=1,alpha=0.8,linetype=2,position=pd)+
       geom_pointrange(aes(ymin=lower,ymax=upper),size=0.3,position=pd)+
       xlab("Year")+ylab("Normalized Density")+
-      scale_color_manual(values=c("navyblue","gray50","darkgreen","darkcyan","mediumpurple4","darkred"),
-                         guide=guide_legend(title="Species",override.aes = list(size=1)))+
+      scale_color_manual(values=c("mediumpurple4","darkred"),
+                         guide=guide_legend(title="",override.aes = list(size=0.5)))+
       guides(linetype="none")+
       theme(text = element_text(color="black",size=16),
             axis.title=element_text(size=10),
-            legend.position = c(0.15,0.7),
+            axis.text.x=element_text(size=10),
+            legend.position = c(0.1,0.85),
             legend.text = element_text(color="black",size=10),
-            panel.border = element_blank())
+            legend.title = element_text(color="black",size=10))
+
+westend.mean_algal_dens_plot <- westend.meandens %>%
+  filter(spp %in% c("mac","pter","ymac","lam")) %>%
+  # mutate(type=ifelse(spp %in% c("mac","ymac","pter","lam"),"algae","urchin")) %>%
+  ggplot(aes(x=date_str,y=meandens,col=long))+
+      geom_hline(yintercept=0)+
+      geom_line(lwd=1,alpha=0.8,position=pd)+
+      geom_pointrange(aes(ymin=lower,ymax=upper),size=0.3,position=pd)+
+      xlab("")+ylab("Normalized Density")+
+      scale_color_manual(values=c("navyblue","gray50","darkgreen","darkcyan"),
+                         guide=guide_legend(title="",override.aes = list(size=0.5)))+
+      guides(linetype="none")+
+      theme(text = element_text(color="black",size=16),
+            axis.title=element_text(size=10),
+            axis.text.x=element_text(size=10),
+            legend.position = c(0.1,0.8),
+            legend.text = element_text(color="black",size=10),
+            legend.title = element_text(color="black",size=10))
+
 rm(pd,westend.long)
 ```
 
@@ -181,8 +212,9 @@ mei.pdo.npgo.ts.plot <-westend %>%
   ggplot(aes(date_str,value,col=long))+
   geom_line(lwd=1.5)+
   geom_hline(yintercept=0,linetype=2,col="black")+
-  labs(title="Physical Drivers: Climate Modes",x="Year",y="Normalized Index Value",col="Driver")+
+  labs(title="Physical Drivers: Climate Modes",x="",y="Normalized Index Value",col="")+
   theme(axis.title=element_text(size=10),
+        axis.text.x=element_text(size=10),
         legend.position = 'bottom',
         legend.text = element_text(size=10))
 sst.waves.ts.plot <-westend %>%
@@ -195,13 +227,14 @@ sst.waves.ts.plot <-westend %>%
   ggplot(aes(date_str,value,col=long))+
   geom_line(lwd=1.5)+
   geom_hline(yintercept=0,linetype=2,col="black")+
-  labs(title="Physical Drivers: Temperature and Disturbance",x="Year",y="Normalized Index Value",col="Driver")+
+  labs(title="Physical Drivers: Temperature and Disturbance",x="",y="Normalized Index Value",col="")+
   theme(axis.title=element_text(size=10),
+        axis.text.x=element_text(size=10),
         legend.position = 'bottom',
         legend.text = element_text(size=10))
-lay <- rbind(1,2,3,3)
-norm_ts<-grid.arrange(mei.pdo.npgo.ts.plot,sst.waves.ts.plot,westend.mean_dens_plot,layout_matrix=lay)
-rm(lay,westend.mean_dens_plot,sst.waves.ts.plot,mei.pdo.npgo.ts.plot)
+lay <- rbind(1,2,3,4)
+norm_ts<-grid.arrange(mei.pdo.npgo.ts.plot,sst.waves.ts.plot,westend.mean_algal_dens_plot,westend.mean_urchin_dens_plot,layout_matrix=lay)
+rm(lay,westend.mean_algal_dens_plot,westend.mean_urchin_dens_plot,sst.waves.ts.plot,mei.pdo.npgo.ts.plot)
 # ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/normalized_time_series.png",plot=norm_ts,h=9,w=7)
 # ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/normalized_time_series.pdf",plot=norm_ts,h=9,w=7)
 ```
@@ -252,6 +285,7 @@ westend.simp.list <- list()
 for(i in 1:length(study_spp)) {
   spp <- study_spp[i]
   dat <- westend %>% select(matches(spp)) %>% as.data.frame()
+  # dat <- westend.fd %>% select(matches(spp)) %>% as.data.frame()
   out <- simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),E=2:9,silent=T,stats_only = T) %>%
     mutate(spp=namekey$long[match(spp,namekey$short)])
   westend.simp.list[[spp]] <- out
@@ -259,14 +293,15 @@ for(i in 1:length(study_spp)) {
 
 # plot
 spp_simp_plot<-bind_rows(westend.simp.list) %>%
-  ggplot(aes(E,rho,color=spp))+
-  geom_line(size=2)+
+  ggplot(aes(x=E))+
+  geom_line(aes(y=rho,color=spp),size=2)+
+  # geom_line(aes(y=const_pred_rho,color=spp),size=1,linetype=2)+
   facet_wrap(~spp,nrow=2,scales="free_y")+
   labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
   scale_x_continuous(breaks=seq(0,9,by=2))+
   coord_cartesian(ylim=c(0,0.8))+
   scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
-  guides(color=F)
+  guides(color='none')
 spp_simp_plot
 # Save best embedding dimensions
 westend.bestE <- sapply(westend.simp.list,function(x) {
@@ -289,13 +324,14 @@ for(i in 1:length(phys.vars)) {
 
 # plot
 phys_simp_plot<-bind_rows(phys.simp.list) %>%
-  ggplot(aes(E,rho))+
-  geom_line(size=2)+
+  ggplot(aes(x=E))+
+  geom_line(aes(y=rho),size=2)+
+  # geom_line(aes(y=const_pred_rho),size=1,linetype=2)+
   facet_wrap(~spp,nrow=2,scales="free_y")+
   labs(x="Embedding Dimension (E)",y=expression(paste("Skill, ",rho)))+
   scale_x_continuous(breaks=seq(0,10,by=2))+
   ylim(c(0,NA))+
-  guides(color=F)+
+  guides(color='none')+
   theme(strip.text = element_text(size=8))
 phys_simp_plot
 
@@ -335,14 +371,15 @@ for(i in 1:length(study_spp)) {
 
 #Plot time horizon vs. rho
 bind_rows(westend.tp.list) %>%
-  ggplot(aes(tp,rho,color=spp))+
-  geom_line(size=2)+
+  ggplot(aes(x=tp))+
+  geom_line(aes(y=rho,color=spp),size=2)+
+  # geom_line(aes(y=const_pred_rho,color=spp),size=1,linetype=2)+
   facet_wrap(~spp,nrow=2,scales="free_y")+
   labs(x="Time to Prediction",y=expression(paste("Skill, ",rho)))+
   scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
   scale_x_continuous(breaks=seq(0,10,by=2))+
   coord_cartesian(ylim=c(0,0.8))+
-  guides(color=F)
+  guides(color='none')
 
 rm(spp,dat,out)
 ```
@@ -379,13 +416,14 @@ for(i in 1:length(study_spp)) {
 }
 
 spp_smap_plot <- bind_rows(westend.smap.list) %>%
-  ggplot(aes(theta,rho,color=spp))+
-  geom_line(size=2)+
+  ggplot(aes(x=theta))+
+  geom_line(aes(y=rho,color=spp),size=2)+
+  # geom_line(aes(y=const_pred_rho,color=spp),size=1,linetype=2)+
   facet_wrap(~spp,nrow=2,scales="free_y")+
   labs(x=expression(paste("Nonlinearity (",theta,")")),y=expression(paste("Skill, ",rho)))+
   scale_color_manual(values=c('Macrocystis >1m'="navyblue",'Macrocystis <1m'="gray50",'Pterygophora'="darkgreen",'Laminaria'="darkcyan",'Purple urchin'="mediumpurple4",'Red urchin'="darkred"),name="")+
   scale_x_continuous(breaks=seq(0,12,by=2))+
-  guides(color=F)
+  guides(color='none')
 spp_smap_plot
 
 ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/smap_species.pdf",spp_smap_plot,h=5,w=7)
@@ -785,7 +823,7 @@ smap_multi <- function(sitedat,libsegs,predsegs=libsegs,species,causalvars,...) 
   sppname <- species
   int.box <- coeffs.long %>% filter(effect!='const')%>%
     ggplot(aes(x=plotting,y=value))+
-    geom_boxplot() +
+    geom_violin() +
     geom_hline(yintercept=0,linetype=2,col="gray40")+
     xlab("Interacting Variable") +
     ylab("Coefficient") +
@@ -817,11 +855,12 @@ westend.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria"
                              Theta = map_dbl(westend.multi.mods,function(x) x$model$theta),
                              Rho = map_dbl(westend.multi.mods,function(x) x$model$rho),
                              MAE=map_dbl(westend.multi.mods,function(x) x$model$mae),
+                             Const = map_dbl(westend.multi.mods,function(x)x$model$const_pred_rho),
                              mod=c("mac","purp","lam","ymac","red","pter"))
 # write_csv(westend.model.perf,"C:/Users/Owen.Liu/Documents/github/EDM_SNI/data/westend_model_perf.csv")
 
 westend.model.perf %>% select(-mod) %>% 
-  kable("html",col.names = c("Modeled Species","Predictors","$\\theta$","$\\rho$","MAE"),digits=3,escape=F) %>%
+  kable("html",col.names = c("Modeled Species","Predictors","$\\theta$","$\\rho$","MAE","$\\rho_{const}$"),digits=3,escape=F) %>%
   kable_styling(full_width = F) %>%
   column_spec(1,bold=T)%>%
   column_spec(2, width = "30em")
@@ -877,74 +916,6 @@ all.mod.coeffs.long %>%
 
 ***
 
-<!-- ## 5. Scenario Exploration (10-28- NOT DOING) -->
-
-<!-- Multivariate S-map models allow us to reconstruct past interactions between species, but we are also interested in how variations in the environment affect those interactions. Investigating questions of that type is not as straightforward as simply isolating interaction types (e.g., algal competition)  and looking at how they have varied in the past, because as we have shown, those past interactions may have additional context that is not captured solely by the state of an environmental variable. As a result, we are in danger of wrongly attributing a changed species interaction to a specific environmental driver because of mirage correlation, when the true context might include the states of other environmental or biological variables in that time period. -->
-
-<!-- With a known structural model, the effect of altering a variable on model outcomes could be calculated directly from the model equation. With our S-maps, we by design do not have a structural equation describing our phenomena of interest, and so we use a nonlinear analogue called scenario exploration[@Deyle2013;@Grziwotz2018] to determine the effect of changing environmental drivers on species interactions. -->
-
-<!-- In scenario exploration, we use the models we built above to predict data where all variables remain the same except for small changes in environmental variables. For example, a multivariate state-space vector for the *Macrocystis* model is $\it{<Mac_t,Lam_{t},Purp_{t},MEI_t,PDO_t,NPGO_t,SST_t>}$. To explore the effect of, say, a change in temperature, we use the *Macrocystis* model to predict $\it{<Mac_t,Lam_{t},Purp_{t},MEI_t,PDO_t,NPGO_t,SST_t+\Delta SST>}$, where $\Delta SST$ is a small change in temperature that we impose. When this scenario exploration is performed with all vectors, we can capture the range of environmental states present in the data, while altering just one at a time. Finally, by comparing predictions and interaction coefficients from the manipulated data to the original reconstructed interactions, we can directly explore the effects of environmental changes on species interactions, across the entire range of states present in the data. Similar explorations (though not directly concerned with interaction coefficients) have been performed to investigate the effects of climate variables on Pacific sardine dynamics[@Deyle2013] and the influence of changes in environmental variables like mean tide level and precipitation on the frequency of mosquito outbreaks in French Polynesia[@Grziwotz2018]. -->
-
-<!-- ```{r build scenarios,include=F} -->
-<!-- # # function to make a clone of the dataset, while incrementing one of the environmental variables -->
-<!-- # build_scenario <- function(envvar="sst",increment=0.1){ -->
-<!-- #   col_name=sym(envvar) -->
-<!-- #   out <- westend %>%  -->
-<!-- #     mutate(!!col_name := !!col_name +increment) -->
-<!-- #   out -->
-<!-- # } -->
-<!-- # # Function to run a scenario -->
-<!-- # # Builds and appends alternative dataset with altered environmental variable to the end of the original data -->
-<!-- # # Then, runs S-map forecasting, using original data as library and new data as prediction set -->
-<!-- # # Outputs the new, full s-map with the same list elements as smap_multi function above -->
-<!-- # run_scenario <- function(envvar="sst",increment=0.1,which_model){ -->
-<!-- #   orig_data <- westend -->
-<!-- #   new_data <- build_scenario(envvar,increment) -->
-<!-- #   joined_data <- bind_rows(orig_data,new_data) -->
-<!-- #    -->
-<!-- #   # new segment indicator for longer dataset -->
-<!-- #   new.segs <- westend.segs+nrow(westend) -->
-<!-- #   # run s-map, using original data at library and new data as pred -->
-<!-- #   out <- smap_multi(sitedat=joined_data,libsegs=westend.segs,predsegs=new.segs,species=which_model,causalvars=westend.causal.vars[[which_model]],num_neighbors=0) -->
-<!-- #    -->
-<!-- #   out -->
-<!-- # } -->
-<!-- #  -->
-<!-- # # Finally, a function to gather "old" and "new" s-map coefficients (the most useful outputs from the new s-map) -->
-<!-- # # Calls the previous two functions and assumes you already have model output from original s-maps (in westend.multi.mods) -->
-<!-- # join_scenarios <- function(envvar="sst",increment=0.1,which_model){ -->
-<!-- #   scenario_output <- run_scenario(envvar,increment,which_model) -->
-<!-- #    -->
-<!-- #   new_preds <- scenario_output$model$model_output[[1]] %>% mutate(scenario=paste(envvar,increment)) -->
-<!-- #   orig_preds <- westend.multi.mods[[which_model]]$model$model_output[[1]] %>% mutate(scenario="original") -->
-<!-- #   joined_preds <- bind_rows(orig_preds,new_preds) -->
-<!-- #    -->
-<!-- #   new_coeffs <- scenario_output$coeffs.long %>% mutate(scenario=paste(envvar,increment)) -->
-<!-- #   orig_coeffs <- westend.multi.mods[[which_model]]$coeffs.long %>% mutate(scenario="original") -->
-<!-- #   joined_coeffs <- bind_rows(orig_coeffs,new_coeffs) -->
-<!-- #    -->
-<!-- #   list(coeffs=joined_coeffs,preds=joined_preds) -->
-<!-- # } -->
-<!-- #  -->
-<!-- # test <- join_scenarios(envvar="mei",increment=0,which_model='purp') -->
-<!-- # test$coeffs %>%  -->
-<!-- #   filter(effect=='red') %>%  -->
-<!-- #   ggplot(aes(value,..density..,fill=scenario))+ -->
-<!-- #   geom_density(alpha=0.5,col=NA)+ -->
-<!-- #   xlim(-2,2)+ -->
-<!-- #   geom_vline(xintercept=0,linetype=2)+ -->
-<!-- #   labs(x="Species Interaction Strength") -->
-<!-- # test$preds %>%  -->
-<!-- #   ggplot(aes(pred,..density..,fill=scenario))+ -->
-<!-- #   geom_density(alpha=0.5,col=NA)+ -->
-<!-- #   xlim(-2,2)+ -->
-<!-- #   geom_vline(xintercept=0,linetype=2)+ -->
-<!-- #   labs(x="Predicted Density",y="") -->
-
-<!-- ``` -->
-
-<!-- *** -->
-
 ## 5. Results
 
 ### Multivariate Model Output: Species interactions
@@ -965,7 +936,7 @@ all.mod.coeffs.plot.box <- all.mod.coeffs.long %>%
   filter(effect %in% study_spp) %>%
   #plot
   ggplot(aes(x=plotting,y=value,fill=type))+
-  geom_boxplot(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
+  geom_violin(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
   stat_summary(fun.y=mean, colour="white", geom="point", 
                shape=17, size=2,show.legend = FALSE)+
   scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
@@ -981,7 +952,7 @@ all.mod.coeffs.plot.box
 # ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_spp_coeffs.pdf",plot=all.mod.coeffs.plot.box,height=8,width=7.5)
 ```
 
-These are box-and-whisker plots of estimated species interaction strengths from S-map models for the five focal species (panels top to bottom): *Macrocystis* adults, *Macrocystis* juveniles, *Pterygophora*, *Laminaria*, purple urchin, and red urchin. Each colored box represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on a modeled species (right y-axis) across all data for a given model (white triangles: mean; vertical lines: median; box: interquartile range; whiskers extend to data point at most $1.5*IQR$ from the box). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, *Strongylocentrotus purpuratus*; P cal., *Pterygophora californica*; M. pyr, *Macrocystis pyrifera*; M. fra, *Mesocentrotus franciscanus*; L. far, *Laminaria farlowii*.
+These are violin plots of estimated species interaction strengths from S-map models for the five focal species (panels top to bottom): *Macrocystis* adults, *Macrocystis* juveniles, *Pterygophora*, *Laminaria*, purple urchin, and red urchin. Each colored distribution represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on a modeled species (right y-axis) across all data for a given model (white triangles: mean; vertical lines: median). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, *Strongylocentrotus purpuratus*; P cal., *Pterygophora californica*; M. pyr, *Macrocystis pyrifera*; M. fra, *Mesocentrotus franciscanus*; L. far, *Laminaria farlowii*.
 
 It is clear from the boxplots that fitted intra- and interspecific interactions display evidence of positive, negative, and neutral interactions. Over the range of conditions in the time series, each species variable with the exception of young *Macrocystis* has positive intraspecific effects; that is, each species’ density has a positive estimated effect on itself, a combination of survivorship and new recruitment. Relative to the magnitude of other interactions, this intraspecific effect is strongest in the two urchin species.
 
@@ -1015,7 +986,7 @@ all.phys.coeffs.plot <- all.mod.coeffs.long %>%
     "waves"="SWH",
     "sst"="SST")
     )+
-  geom_boxplot(fill="dodgerblue2",outlier.alpha=0.4,position = "identity")+
+  geom_violin(fill="dodgerblue2",outlier.alpha=0.4,position = "identity")+
   stat_summary(fun.y=mean, colour="white", geom="point", 
                shape=17, size=2,show.legend = FALSE)+
   geom_hline(yintercept=0,linetype=2)+
@@ -1031,7 +1002,7 @@ all.phys.coeffs.plot
 # ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_phys_coeffs.pdf",plot=all.mod.coeffs.plot.box,height=8,width=7.5)
 ```
 
-In this figure, each box represents the distribution of estimated effect of a physical driver (left y-axis) on the modeled species across all data for a given model. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index.
+In this figure, each distribution represents the distribution of estimated effect of a physical driver (left y-axis) on the modeled species across all data for a given model. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index.
 
 Physical forcing variables affect the dynamics of all species in the study, to varying degrees. *Macrocystis* is the only species in the analysis that displays a significant cross-mapping signal (significant causal forcing) with all five included physical variables. The positive effect of the NPGO is consistent with our expectations [@Bell2015]. However, the PDO index has a positive effect on *Macrocystis*, contrary to expectation because in general, positive values of the PDO are associated with warmer SST and nutrient-poor conditions in the northeast Pacific. *Macrocystis* recruits, on the other hand, are positively affected by the MEI, SWH, and SST, and negatively affected by the PDO and NPGO. Together, the effects of physical forcing on *Macrocystis* suggest that conditions that are poor for survivorship of adults (higher SST, less nutrient availability, greater disturbance) may produce favorable conditions for recruitment of new sporophytes.
 
@@ -1072,6 +1043,7 @@ ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_densit
 ```
 
 ***
+
 ### Environmental Context and Algal Interactions
 A major observation from the multivariate models is that many interactions between species and between species and their environments can be variable (positive or negative, depending on conditions). For the algal species especially, the combination of variable interspecific interaction strengths and occasionally strong environmental forcing effects suggests that the strength of species interactions may be driven by environmental context.
 
@@ -1097,14 +1069,71 @@ ymac_ints_ts <- ymac_ints_ts %>% left_join(npgo_ts,by=c('period','date_str'))
 ymac_ints_plot <- ggplot(ymac_ints_ts,aes(date_str,meanval,col=plotting))+
   geom_line(size=1.5)+
   scale_color_npg()+
+  annotate("rect",xmin=as_date("1999-01-01"),xmax=as_date("2001-01-01"),ymin=-1.3,ymax=1.3,fill=NA,col='black')+
+  annotate("rect",xmin=as_date("2004-01-01"),xmax=as_date("2006-01-01"),ymin=-1.3,ymax=1.3,fill=NA,col='black')+
   geom_hline(yintercept=0,linetype=2)+
-  labs(x="Year",y="Effect on Macrocystis <1m",color="Interacting\nSpecies")
+  labs(x="",y="Effect on Macrocystis <1m",color="Interacting\nSpecies")
 ymac_ints_npgo_plot <- ymac_ints_plot+
   geom_line(aes(y=npgo*0.5),col='darkgreen',size=1,linetype=2)+
-  scale_y_continuous(sec.axis=sec_axis(~./0.5,name="NPGO"))
+  scale_y_continuous(sec.axis=sec_axis(~./0.5,name="NPGO"))+
+  theme(axis.title=element_text(size=10),
+        axis.text=element_text(size=10))
 ymac_ints_npgo_plot
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.png",plot=ymac_ints_npgo_plot,h=4,w=8)
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.pdf",plot=ymac_ints_npgo_plot,h=4,w=8)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.png",plot=ymac_ints_npgo_plot,h=4,w=8)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.pdf",plot=ymac_ints_npgo_plot,h=4,w=8)
+```
+
+```{r}
+# Make zoomed boxes contrasting lowest and highest NPGO with these species interactions
+library(rsvg)
+lam_img <- magick::image_read_svg(here('icons', "laminaria-transparent.svg"))
+pter_img <- magick::image_read_svg(here('icons', "pterygophora-transparent.svg"))
+mac_img <- magick::image_read_svg(here('icons', "macrocystis-transparent.svg"))
+ymac_img <- magick::image_read_svg(here('icons', "sporophyte-transparent.svg"))
+
+npgo_high_ymac <- ymac_ints_ts %>% 
+  filter(year(date_str)==2000) %>% 
+  ggplot(aes(plotting,meanval,fill=plotting))+
+  geom_col()+
+  geom_hline(yintercept=0)+
+  scale_fill_npg(guide='none')+
+  scale_y_continuous(limits=c(-1.3,0.7))+
+  labs(x="",y="Effect on Macrocystis <1m")+
+  theme(axis.title=element_text(size=10),
+        axis.text=element_text(size=10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank())
+npgo_low_ymac <- ymac_ints_ts %>% 
+  filter(year(date_str)==2005,month(date_str)==7) %>% 
+  ggplot(aes(plotting,meanval,fill=plotting))+
+  geom_col()+
+  geom_hline(yintercept=0)+
+  scale_fill_npg(guide='none')+
+  scale_y_continuous(limits=c(-1.3,0.7))+
+  labs(x="",y="Effect on Macrocystis <1m")+
+  theme(axis.title=element_text(size=10),
+        axis.text=element_text(size=10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank())
+
+ymac2 <- ggdraw()+
+  draw_plot(npgo_high_ymac)+
+  draw_image(mac_img,x=0,y=0.25,width=0.4,height=0.4,hjust=-0.25,clip = 'on')+
+  draw_image(lam_img,x=0.3,y=0.25,width=0.4,height=0.4,hjust=-0.15,clip = 'on')+
+  draw_image(pter_img,x=0.6,y=0.25,width=0.4,height=0.4,hjust=-0.1,clip = 'on')
+
+ymac3 <- ggdraw()+
+  draw_plot(npgo_low_ymac)+
+  draw_image(mac_img,x=0,y=0.25,width=0.4,height=0.4,hjust=-0.25,clip = 'on')+
+  draw_image(lam_img,x=0.3,y=0.25,width=0.4,height=0.4,hjust=-0.15,clip = 'on')+
+  draw_image(pter_img,x=0.6,y=0.25,width=0.4,height=0.4,hjust=-0.1,clip = 'on')
+
+row2 <- plot_grid(ymac2,ymac3,nrow=1,labels=c('2000 (high NPGO)','2005 (low NPGO)'),label_y = 1.1,label_x=-0.1)
+
+fig4 <- plot_grid(ymac_ints_npgo_plot,row2,nrow=2,rel_heights = c(1,0.75))
+
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.pdf",plot=fig4,h=6,w=8)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.png",plot=fig4,h=6,w=8)
 ```
 
 Next, we seek to formalize the comparison of species interactions with varying environmental contexts. The difficulty with assigning direct relationships between individual environmental variables and particular species interactions lies in the fact that all interactions are context-dependent, and those contexts involve more than one environmental variable and species at a time. For example, we could hypothesize that *Macrocystis* may be a better competitor with *Laminaria* and *Pterygophora* under elevated nutrient levels, indicated by high values of the NPGO index in the study area[@Bell2015]. Using our models, we can identify the *Macrocystis* interactions that occurred under high values of the NPGO, but these observations may be somewhat confounded with other elements of the environmental or ecological context at that particular time (e.g. whether the high NPGO values co-occur with high versus low SST values). Therefore, we use a state-space neighborhood averaging procedure, similar to[@Dixon1999], to temper the influence of individual observations and determine how environmental context may affect species interactions. For each model, we extract all estimated species interactions (coefficients from local Jacobians) [Note: remember, not all models contain all bi-directional species interactions, since we only retained species in each model that showed causal links through CCM analysis]. Then, for each estimated interaction, we find its 30 nearest neighbors in the multivariate model space---its 30 most similar environmental and biological contexts---and then calculate the average value of the interaction and of each environmental variable amongst those 30 neighbors. By doing this for all estimated interactions, we can observe the general environmental contexts that give rise to stronger or weaker species interactions, while smoothing across individual observations.
@@ -1336,8 +1365,8 @@ plot_jacobian_comparison <- function(model,eff1,eff2){
   
   dat %>% 
     ggplot(aes_string(paste0("eff_",eff2),paste0("eff_",eff1)))+
-    geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=minmax[3],ymax=0,fill='salmon')+
-    geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=0,ymax=minmax[4],fill='mediumseagreen')+
+    # geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=minmax[3],ymax=0,fill='salmon')+
+    # geom_rect(xmin=minmax[1],xmax=minmax[2],ymin=0,ymax=minmax[4],fill='mediumseagreen')+
     geom_point(size=0.5,col='gray30')+
     # geom_smooth(col='gray50')+
     # annotate("text",x = minmax[1]+0.3,y=0.1,label="Facilitation",size=4,family="Times New Roman")+
@@ -1380,11 +1409,253 @@ purp_plots
 
 ```
 
-In the first figure, there are clear relationships between the effect of the NPGO and the strength of the interactions between algal species. For example, for *Laminaria*, there is evidence for the SGH in its relationship to *Pterygophora* and adult *Macrocystis* (panels a and b). As the NPGO's beneficial effect on *Laminaria* increase, competition with *Pterygophora* and *Macrocystis* intensifies. Conversely, under the presumably stressful conditions associated with negative impacts of the NPGO on *Laminaria*, facilitation is observed. This phenomenon is also clear in the effect of the NPGO and PDO on adult *Macrocystis* (panel g).
+In the first figure, there are clear relationships between the effect of the NPGO and the strength of the interactions between algal species. For example, for *Laminaria*, there is evidence for the SGH in its relationship to *Pterygophora* and adult *Macrocystis* (panels a and b). As the NPGO's beneficial effect on *Laminaria* increases, competition with *Pterygophora* and *Macrocystis* intensifies. Conversely, under the presumably stressful conditions associated with negative impacts of the NPGO on *Laminaria*, facilitation is observed. This phenomenon is also clear in the effect of the NPGO on adult *Macrocystis* (panel g).
 
 However, there is evidence of the opposite relationship as well, whereby the strengths of environmental forcing and species interactions are positively rather than negatively associated. Unlike the effect of the NPGO, the positive effects of the PDO on *Laminaria* are associated with an amelioration of *Laminaria*'s negative interaction with *Macrocystis* (panel b), and a positive effect of *Pterygophora*(panel a). Also interesting is the relationship between environmental context and drivers of *Macrocystis* recruitment (panels d-g). When NPGO conditions are poor for *Macrocystis* sporophytes, we also observe intensified negative impacts of *Pterygophora* and *Laminaria* on *Macrocystis* and an increasingly negative intraspecific effect of adult *Macrocystis*. Some algal species interactions seem to be less sensitive to particular environmental contexts, such as the effect of adult *Macrocystis* on *Pterygophora* (panel h).
 
 The relationships of algal species interaction strength with herbivory are less clear. The last set of panels above shows how algal species interactions vary with the effects of the purple urchin *S. purpuratus* on each algae species. Under the SGH and related logic, we might expect that a greater negative effect of herbivory would decrease competition and increase facilitation between the algae species as a result of associative protection from herbivory[@Harris1984]. Instead, we do not observe a strong association between the strength of herbivory and the strength of algal interactions, with a couple of exceptions. There is evidence that as *Laminaria* is more negatively affected by *S. purpuratus*, it is positively affected by the presence of *Macrocystis* recruits (panel c). In turn, *Laminaria*'s negative effect on adult *Macrocystis* intensifies with increased herbivory pressure (panel d).
+
+### Alternative Environmental Stress Plots
+
+Let's group these outputs in a different way. First, looking at the interactive effects of the NPGO and adult algal competition:
+
+```{r npgo_sgh,fig.height=4,fig.width=6}
+npgo_eff <- causal_contexts %>%  
+  filter(effect=='npgo',mod %in% c('mac','lam','pter')) %>% 
+  select(time,mod,value_avg) %>% 
+  distinct() %>% 
+  rename(eff_npgo=value_avg)
+  
+npgo_sgh <- causal_contexts %>%  
+  filter(effect %in% c('mac','lam','pter'),mod %in% c('mac','lam','pter')) %>% 
+  select(time,mod,effect,mod_plotting_name,effect_plotting_name,value_avg) %>% 
+  distinct() %>% 
+  left_join(npgo_eff,by=c('time','mod')) %>% 
+  unite(int_plotting_name,effect_plotting_name,mod_plotting_name,sep="-->")
+
+npgo_sgh_plot <- npgo_sgh %>% 
+  ggplot(aes(eff_npgo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
+  geom_point(alpha=0.3,size=0.5)+
+  geom_smooth(se=F)+
+  scale_color_manual(values=cols4A)+
+  scale_fill_manual(values=cols4A)+
+  # scale_color_npg()+
+  # scale_fill_npg()+
+  geom_hline(yintercept = 0,linetype=2)+
+  geom_vline(xintercept = 0,linetype=2)+
+  xlim(NA,1.5)+ylim(NA,1.5)+
+  labs(x="Effect of NPGO",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank(),
+        legend.position = c(0.85,0.75),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_text(size=10),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=12),
+        plot.margin=unit(c(5.5, 5.5, 40, 40), "points"))
+
+npgo_sgh_fig<- ggdraw()+
+  draw_plot(npgo_sgh_plot)+
+  draw_image(mac_img,x=0.3,y=0.7,width=0.25,height=0.25,clip = 'on')+
+  draw_image(lam_img,x=0.4,y=0.7,width=0.25,height=0.25,clip = 'on')+
+  draw_image(pter_img,x=0.5,y=0.7,width=0.25,height=0.25,clip = 'on')
+
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig.png",plot=npgo_sgh_fig,h=4,w=6)
+
+# npgo_sgh_plot
+```
+
+Effects on *Macrocystis* recruitment
+
+```{r npgo_sgh_ymac, fig.height=4,fig.width=6}
+npgo_eff_ymac <- causal_contexts %>%  
+  filter(effect=='npgo',mod %in% c('ymac')) %>% 
+  select(time,mod,value_avg) %>% 
+  distinct() %>% 
+  rename(eff_npgo=value_avg)
+  
+npgo_sgh_ymac <- causal_contexts %>%  
+  filter(effect %in% c('mac','lam','pter'),mod=='ymac') %>% 
+  select(time,mod,effect,mod_plotting_name,effect_plotting_name,value_avg) %>% 
+  distinct() %>% 
+  left_join(npgo_eff_ymac,by=c('time','mod')) %>% 
+  unite(int_plotting_name,effect_plotting_name,mod_plotting_name,sep="-->")
+
+npgo_sgh_ymac_plot <- npgo_sgh_ymac %>% 
+  ggplot(aes(eff_npgo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
+  geom_point(alpha=0.3,size=0.5)+
+  geom_smooth(se=F)+
+  scale_color_manual(values=cols3A)+
+  scale_fill_manual(values=cols3A)+
+  geom_hline(yintercept = 0,linetype=2)+
+  geom_vline(xintercept = 0,linetype=2)+
+  xlim(NA,0.5)+ylim(NA,0.5)+
+  labs(x="Effect of NPGO on Recruitment",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank(),
+        legend.position = c(0.85,0.8),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_text(size=10),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=12),
+        plot.margin=unit(c(0.5, 5.5, 40, 40), "points"))
+
+npgo_sgh_ymac_fig<- ggdraw()+
+  draw_plot(npgo_sgh_ymac_plot)+
+  draw_image(mac_img,x=0,y=0.65,width=0.25,height=0.25,hjust=0.35,clip = 'on')+
+  draw_image(lam_img,x=0,y=0.45,width=0.25,height=0.25,hjust=0.35,clip = 'on')+
+  draw_image(pter_img,x=0,y=0.25,width=0.25,height=0.25,hjust=0.35,clip = 'on')+
+  # draw_image(ymac_img,x=0.35,y=0.7,width=0.3,height=0.3,clip = 'on')
+  draw_image(ymac_img,x=0.7,y=0,width=0.3,height=0.3,vjust=0,clip = 'on')
+
+fig5 <- plot_grid(npgo_sgh_fig,npgo_sgh_ymac_fig,nrow=2,labels = 'auto')
+
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig5.png",plot=fig5,h=8,w=6)
+
+```
+
+
+For the PDO:
+
+```{r pdo_sgh,fig.height=8,fig.width=6}
+pdo_eff <- causal_contexts %>%  
+  filter(effect=='pdo',mod %in% c('mac','lam','pter')) %>% 
+  select(time,mod,value_avg) %>% 
+  distinct() %>% 
+  rename(eff_pdo=value_avg)
+  
+pdo_sgh <- causal_contexts %>%  
+  filter(effect %in% c('mac','lam','pter'),mod %in% c('mac','lam','pter')) %>% 
+  select(time,mod,effect,mod_plotting_name,effect_plotting_name,value_avg) %>% 
+  distinct() %>% 
+  left_join(pdo_eff,by=c('time','mod')) %>% 
+  unite(int_plotting_name,effect_plotting_name,mod_plotting_name,sep="-->")
+
+pdo_sgh_plot <- pdo_sgh %>% 
+  ggplot(aes(eff_pdo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
+  geom_point(alpha=0.3,size=0.5)+
+  geom_smooth(se=F)+
+  scale_color_manual(values=cols4A)+
+  scale_fill_manual(values=cols4A)+
+  geom_hline(yintercept = 0,linetype=2)+
+  geom_vline(xintercept = 0,linetype=2)+
+  xlim(NA,1.5)+ylim(NA,1.5)+
+  labs(x="Effect of PDO",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank(),
+        legend.position = c(0.85,0.8),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_text(size=10),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=12))
+pdo_eff_ymac <- causal_contexts %>%  
+  filter(effect=='pdo',mod %in% c('ymac')) %>% 
+  select(time,mod,value_avg) %>% 
+  distinct() %>% 
+  rename(eff_pdo=value_avg)
+  
+pdo_sgh_ymac <- causal_contexts %>%  
+  filter(effect %in% c('mac','lam','pter'),mod=='ymac') %>% 
+  select(time,mod,effect,mod_plotting_name,effect_plotting_name,value_avg) %>% 
+  distinct() %>% 
+  left_join(pdo_eff_ymac,by=c('time','mod')) %>% 
+  unite(int_plotting_name,effect_plotting_name,mod_plotting_name,sep="-->")
+
+pdo_sgh_ymac_plot <- pdo_sgh_ymac %>% 
+  ggplot(aes(eff_pdo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
+  geom_point(alpha=0.3,size=0.5)+
+  geom_smooth(se=F)+
+  scale_color_manual(values=cols3A)+
+  scale_fill_manual(values=cols3A)+
+  geom_hline(yintercept = 0,linetype=2)+
+  geom_vline(xintercept = 0,linetype=2)+
+  # xlim(NA,0.5)+ylim(NA,0.5)+
+  labs(x="Effect of PDO on Recruitment",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank(),
+        legend.position = c(0.85,0.8),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_text(size=10),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=12))
+
+pdo_sgh_fig <- plot_grid(pdo_sgh_plot,pdo_sgh_ymac_plot,nrow=2)
+
+pdo_sgh_fig
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/pdo_sgh_fig.png",plot=pdo_sgh_fig,h=8,w=6)
+
+```
+
+For herbivory by purple urchins:
+
+```{r purp_sgh,fig.height=8,fig.width=6}
+purp_eff <- causal_contexts %>%  
+  filter(effect=='purp',mod %in% c('mac','lam','pter')) %>% 
+  select(time,mod,value_avg) %>% 
+  distinct() %>% 
+  rename(eff_purp=value_avg)
+  
+purp_sgh <- causal_contexts %>%  
+  filter(effect %in% c('mac','lam','pter'),mod %in% c('mac','lam','pter')) %>% 
+  select(time,mod,effect,mod_plotting_name,effect_plotting_name,value_avg) %>% 
+  distinct() %>% 
+  left_join(purp_eff,by=c('time','mod')) %>% 
+  unite(int_plotting_name,effect_plotting_name,mod_plotting_name,sep="-->")
+
+purp_sgh_plot <- purp_sgh %>% 
+  ggplot(aes(eff_purp,value_avg,col=int_plotting_name,fill=int_plotting_name))+
+  geom_point(alpha=0.3,size=0.5)+
+  geom_smooth(se=F)+
+  scale_color_manual(values=cols4A)+
+  scale_fill_manual(values=cols4A)+
+  geom_hline(yintercept = 0,linetype=2)+
+  geom_vline(xintercept = 0,linetype=2)+
+  xlim(NA,1.5)+ylim(NA,1.5)+
+  labs(x="Effect of Purple Urchins",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank(),
+        legend.position = c(0.85,0.8),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_text(size=10),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=12))
+purp_eff_ymac <- causal_contexts %>%  
+  filter(effect=='purp',mod %in% c('ymac')) %>% 
+  select(time,mod,value_avg) %>% 
+  distinct() %>% 
+  rename(eff_purp=value_avg)
+  
+purp_sgh_ymac <- causal_contexts %>%  
+  filter(effect %in% c('mac','lam','pter'),mod=='ymac') %>% 
+  select(time,mod,effect,mod_plotting_name,effect_plotting_name,value_avg) %>% 
+  distinct() %>% 
+  left_join(purp_eff_ymac,by=c('time','mod')) %>% 
+  unite(int_plotting_name,effect_plotting_name,mod_plotting_name,sep="-->")
+
+purp_sgh_ymac_plot <- purp_sgh_ymac %>% 
+  ggplot(aes(eff_purp,value_avg,col=int_plotting_name,fill=int_plotting_name))+
+  geom_point(alpha=0.3,size=0.5)+
+  geom_smooth(se=F)+
+  scale_color_manual(values=cols3A)+
+  scale_fill_manual(values=cols3A)+
+  geom_hline(yintercept = 0,linetype=2)+
+  geom_vline(xintercept = 0,linetype=2)+
+  # xlim(NA,0.5)+ylim(NA,0.5)+
+  labs(x="Effect of Purple Urchins on Recruitment",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor=element_blank(),
+        legend.position = c(0.85,0.8),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_text(size=10),
+        legend.text = element_text(size=10),
+        legend.title = element_text(size=12))
+
+purp_sgh_fig <- plot_grid(purp_sgh_plot,purp_sgh_ymac_plot,nrow=2)
+
+purp_sgh_fig
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/purp_sgh_fig.png",plot=purp_sgh_fig,h=8,w=6)
+
+```
 
 ## 6. Supplementary Analysis- Multivariate Model Selection
 
@@ -1392,13 +1663,25 @@ In the above analyses, we were interested in the influence of causal environment
 
 Another feasible choice for model selection in EDM is to try to find a combination of predictor variables that best predict the target biological variable (for another instance of this approach for observational ecological data, see [@Deyle2016], section 6b. Here, we do this variable selection for our multivariate kelp forest models. 
 
-For each species' model, we begin with the full models used in the main analysis that include all CCM-validated causal variables before proceeding with a form of backwards model selection. We test each included predictor variable to see if *exclusion* of that variable improves overall predictions of the target species density, using leave-one-out cross-validation as before. We then repeat this process until the removal of any additional variables degrades model predictive skill. Finally, as a visual and quantitative comparison of the full models versus the backwards-selected models, we reproduce the boxplots of interactions from section 6 and produce a table comparing means, medians, and standard deviations of all estimated interactions between the two sets of models. The results are shown below.
+For each species' model, we begin with the full models used in the main analysis that include all CCM-validated causal variables before proceeding with a form of backwards model selection. We test each included predictor variable to see if *exclusion* of that variable improves overall predictions of the target species density, using leave-one-out cross-validation as before. During this process, if the number of predictor variables used falls below the optimal embedding dimension derived from univariate simplex projection, we use univariate lags to create a mixed embedding such that the total number of predictor variables is equal to the optimal embedding dimension. We then repeat this process until the removal of any additional variables degrades model predictive skill. Finally, as a visual and quantitative comparison of the full models versus the backwards-selected models, we reproduce the boxplots of interactions from section 6 and produce a table comparing means, medians, and standard deviations of all estimated interactions between the two sets of models. The results are shown below.
 
 ```{r backwards selection fxn}
 back_select_multivariate_model <- function(sitedat=westend,libsegs=westend.segs,predsegs=libsegs,species,causalvars,...) {
   ptm <- proc.time()
   nsteps <- length(causalvars)
   back.mod.table <- tibble(ex.var=character(nsteps),rho=numeric(nsteps),theta=numeric(nsteps))
+  spp.bestE <- westend.bestE[[species]]
+  
+  # add lags to potentially use in mixed embeddings for models whose dimensionality falls below the optimal univariate simplex embedding dimensions
+  lagsblock <- sitedat %>% dplyr::select(site,species) %>%
+    rename(orig=2) %>% 
+    group_by(site) %>% 
+    mutate(lag1=lag(orig,1),lag2=lag(orig,2),lag3=lag(orig,3),lag4=lag(orig,4),lag5=lag(orig,5),
+           lag6=lag(orig,6),lag7=lag(orig,7)) %>% 
+    ungroup() %>% 
+    dplyr::select(contains('lag'))
+  
+  sitedat <- sitedat %>% bind_cols(lagsblock)
   
   # Run full model, including all CCM-validated causal variables
   full.mod <- block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(libsegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T)
@@ -1419,13 +1702,16 @@ back_select_multivariate_model <- function(sitedat=westend,libsegs=westend.segs,
     for(j in 1:length(poss_vars)) {
       # For each iteration, we remove one variable at a time
       temp_vars <- poss_vars[-j]
+      # if the number of variables used drops below the species' best embedding dimension, fill with univariate lags
+      bestEdiff <- spp.bestE-length(poss_vars)
+      if(bestEdiff>0) temp_vars <- c(temp_vars,paste0('lag',1:bestEdiff))
       
       temp <- block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(libsegs),columns=temp_vars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T)
       out.rho[j] <- max(temp$rho)
       out.theta[j] <-  temp$theta[temp$rho==max(temp$rho)][1]
     }
     
-    # the excluded variable is that which most improves model predictability
+    # the excluded variable is that which most improves model predictability (that is not a univariate lag)
     ex.var <- names(out.rho)[out.rho==max(out.rho,na.rm=T)] %>% subset(!is.na(.))
     back.mod.table$ex.var[i] <- ex.var
     back.mod.table$rho[i] <- out.rho[ex.var]
@@ -1473,15 +1759,15 @@ names(back_selected_tables)<-names(back_selected_plots) <- names(back_selected_m
 back_select_allplots <-plot_grid(plotlist=back_selected_plots,ncol=2)
 back_select_allplots
 
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/back_select_allplots.pdf",back_select_allplots,h=8,w=6)
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/back_select_allplots.png",back_select_allplots,h=8,w=6)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/back_select_allplots.pdf",back_select_allplots,h=8,w=8)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/back_select_allplots.png",back_select_allplots,h=8,w=8)
 
 ```
 For most models there is improvement in model forecasting skill with some variables excluded. However, this improvement is very slight. The increase in model predictive skill from the full model to the backwards-selected model for all species is less than 9 percent. The greatest improvement was for the *Laminaria* model (8 percent increase in predictive skill from the full to the selected model), and least for the purple urchin *S. purpuratus* model, for which any variable removal resulted in a decline in forecast skill.
 
 In comparing the mean, median, and variance of predicted interaction strengths in the backwards-selected versus the full models, there were also not large differences for the interactions that remained in the selected models. The box-and-whisker plots below show the same summary results as in section 6, using the backwards-selected models. Visually, there is little difference in the distributions of estimated interactions.
 
-```{r compare back selected models,fig.cap="Box-and-whisker plots of estimated species interaction strengths from backwards-selected S-map models for the five focal species (panels top to bottom): Macrocystis adults, Macrocystis juveniles, Pterygophora, Laminaria, purple urchin, and red urchin. Each colored box represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on the modeled species across all data for a given model (white triangles: mean; vertical lines: median; box: interquartile range; whiskers extend to data point at most 1.5*IQR from the box). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, Strongylocentrotus purpuratus; P cal., Pterygophora californica; M. pyr, Macrocystis pyrifera; M. fra, Mesocentrotus franciscanus; L. far, Laminaria farlowii."}
+```{r compare back selected models,fig.cap="Violin plots of estimated species interaction strengths from backwards-selected S-map models for the five focal species (panels top to bottom): Macrocystis adults, Macrocystis juveniles, Pterygophora, Laminaria, purple urchin, and red urchin. Each colored box represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on the modeled species across all data for a given model (white triangles: mean; vertical lines: median). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, Strongylocentrotus purpuratus; P cal., Pterygophora californica; M. pyr, Macrocystis pyrifera; M. fra, Mesocentrotus franciscanus; L. far, Laminaria farlowii."}
 # Add sequential percent improvement measure to model selection tables
 back_selected_tables <- back_selected_tables %>% 
   purrr::map(function(x){
@@ -1508,7 +1794,7 @@ all.selected.mod.coeffs.plot.box <- all.selected.mod.coeffs.long %>%
   filter(effect %in% study_spp) %>%
   #plot
   ggplot(aes(x=plotting,y=value,fill=type))+
-  geom_boxplot(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
+  geom_violin(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
   stat_summary(fun.y=mean, colour="white", geom="point", 
                shape=17, size=2,show.legend = FALSE)+
   scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
@@ -1526,7 +1812,7 @@ all.selected.mod.coeffs.plot.box
 ```
 
 
-```{r phys selected models,fig.height=8,fig.width=8, fig.cap="Box-and-whisker plots of estimated effects of physical variables on focal species from backwards-selected S-map models (panels top to bottom): Macrocystis adults, Macrocystis juveniles, Pterygophora, Laminaria, purple urchin, and red urchin. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index."}
+```{r phys selected models,fig.height=8,fig.width=8, fig.cap="Violin plots of estimated effects of physical variables on focal species from backwards-selected S-map models (panels top to bottom): Macrocystis adults, Macrocystis juveniles, Pterygophora, Laminaria, purple urchin, and red urchin. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index."}
 # For physical variables
 all.phys.selected.coeffs.plot <- all.selected.mod.coeffs.long %>%
   filter(effect %in% phys.vars)%>%
@@ -1546,7 +1832,7 @@ all.phys.selected.coeffs.plot <- all.selected.mod.coeffs.long %>%
     "waves"="SWH",
     "sst"="SST")
     )+
-  geom_boxplot(fill="dodgerblue2",outlier.alpha=0.4,position = "identity")+
+  geom_violin(fill="dodgerblue2",outlier.alpha=0.4,position = "identity")+
   stat_summary(fun.y=mean, colour="white", geom="point", 
                shape=17, size=2,show.legend = FALSE)+
   geom_hline(yintercept=0,linetype=2)+
@@ -1619,5 +1905,106 @@ ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/full_select_mod_comp.pd
 ```
 
 Given this consistency of the full and backwards-selected models for all species, we can be confident that the choice of the particular variables to include in the multivariate S-maps is not causing spurious or inconsistent results for estimated species interactions, despite the exclusion of some variables in the backwards-selected models.
+
+## 7. Supplementary Analysis- First-Differenced Data
+
+As an additional robustness check, we run S-map multivariate models with first-differenced data.
+
+```{r}
+westend.fd <- westend %>% mutate(across(lam:sst,~.x-lag(.x,1)))
+# Apply to the West End data
+westend.fd.multi.mods <- purrr::map(list("mac","purp","lam","ymac","red","pter"),function(x) {
+  smap_multi(sitedat=westend.fd,libsegs=westend.segs,species=x,causalvars=westend.causal.vars[[x]])
+})
+names(westend.fd.multi.mods) <- c("mac","purp","lam","ymac","red","pter")
+```
+
+Look at analogous outputs
+
+```{r}
+westend.fd.model.perf <- tibble(Species=c("Macrocystis","Purple Urchin","Laminaria","Young Macrocystis","Red Urchin","Pterygophora"),
+                             Predictors=purrr::map_chr(westend.causal.vars,.f=function(x){
+                               y=namekey$long[match(x,namekey$short)];paste(y,sep=",",collapse=", ")}),
+                             Theta = map_dbl(westend.fd.multi.mods,function(x) x$model$theta),
+                             Rho = map_dbl(westend.fd.multi.mods,function(x) x$model$rho),
+                             MAE=map_dbl(westend.fd.multi.mods,function(x) x$model$mae),
+                             Const = map_dbl(westend.fd.multi.mods,function(x)x$model$const_pred_rho),
+                             mod=c("mac","purp","lam","ymac","red","pter"))
+```
+
+```{r}
+# Join all coefficients
+all.fd.mod.coeffs.long <- purrr::map(names(westend.fd.multi.mods),function(x){
+  westend.fd.multi.mods[[x]][["coeffs.long"]] %>% mutate(mod=x)
+  }
+  )%>%
+  bind_rows() %>%
+  mutate(mod_plotting_name = namekey$long[match(mod,namekey$short)])
+
+
+# assign interaction types: competition, herbivory (effect of urchins on algae), consumption (effect of algae on urchin), or growth
+# add rho label for facet plotting
+mod_fd_rho_labels <- westend.fd.model.perf %>%
+  mutate(label1="rho==",Rho_round=round(Rho,2))%>%
+  unite(label,label1,Rho_round,sep="",remove=F)%>%
+  select(mod,label)
+
+all.fd.mod.coeffs.long %>%
+  #add the type of interaction
+  left_join(combinations,by=c("mod","effect"))%>%
+  left_join(mod_fd_rho_labels,by="mod") -> all.fd.mod.coeffs.long
+```
+
+```{r boxplot of species interactions, echo=F,warning=F,message=F,fig.height=8,fig.width=7.5}
+
+# boxplot of all species interactions
+all.fd.mod.coeffs.plot.box <- all.fd.mod.coeffs.long %>%
+  #filter for just species (no physical vars yet)
+  filter(effect %in% study_spp) %>%
+  #plot
+  ggplot(aes(x=plotting,y=value,fill=type))+
+  geom_violin(outlier.alpha=0.4,outlier.size=1,width=0.8,position = "identity")+
+  stat_summary(fun.y=mean, colour="white", geom="point", 
+               shape=17, size=2,show.legend = FALSE)+
+  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  geom_hline(yintercept=0,linetype=2)+
+  geom_text(aes(x=1.2,y=1.8,label=label),size=4, parse=T,check_overlap=TRUE,show.legend = FALSE)+
+  ylim(-2,2)+
+  coord_flip()+
+  labs(y="Estimated Interaction Coefficient",x="Interacting Species")+
+  facet_grid(mod_plotting_name~.,scales="free",space="free")
+
+all.fd.mod.coeffs.plot.box
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_fd_spp_coeffs.png",plot=all.fd.mod.coeffs.plot.box,height=8,width=7.5)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_fd_spp_coeffs.pdf",plot=all.fd.mod.coeffs.plot.box,height=8,width=7.5)
+```
+
+```{r}
+# Density plot by interaction type
+fd_interaction_distribution_by_type <- all.fd.mod.coeffs.long %>%
+  filter(!is.na(type)) %>%
+  group_by(type) %>%
+  mutate(mean_int=mean(value,na.rm=T),median_int=median(value,na.rm=T))%>%
+  ungroup()%>%
+  ggplot(aes(value,..density..,fill=type))+
+  geom_density(alpha=0.8,color=NA)+
+  # geom_density_ridges(alpha=0.8,scale=1.4)+
+  # stat_density_ridges(geom="density_ridges_gradient",calc_ecdf='true',quantiles=4,alpha=0.8,scale=1)+
+  # scale_fill_viridis_d(name="quantiles",alpha=0.8)+
+  geom_vline(xintercept=0,linetype=2)+
+  geom_vline(aes(xintercept=median_int),color='black')+
+  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  scale_color_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  guides(fill=F,color=F)+
+  xlim(-1.5,1.5)+
+  labs(x="Interaction strength",y="Probability density",title="Distribution of Interaction Strengths by Type")+
+  facet_grid(rows=vars(type))
+
+fd_interaction_distribution_by_type
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_fd_models_density.png",plot=fd_interaction_distribution_by_type)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_fd_models_density.pdf",plot=fd_interaction_distribution_by_type)
+```
+
+
 
 ## References
