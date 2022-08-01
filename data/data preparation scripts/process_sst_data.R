@@ -7,6 +7,7 @@ require(fields)
 require(lubridate)
 require(dplyr)
 require(here)
+require(purrr)
 here <- here::here
 
 extr_ncdf_SNI <- function(fname) {
@@ -59,6 +60,7 @@ extr_ncdf_SNI <- function(fname) {
 
 ## Pull out all data for this 1x1deg grid around SNI, 1981-2011
 sst.dat.all <- data.frame(Lat=numeric(),Long=numeric(),Date=character(),sst=numeric())
+
 for(i in 1981:2014) {
   fname <- paste0(here('data','raw','ncdf sst'),'/sst.day.mean.',i,'.nc')
   temp <- extr_ncdf_SNI(fname)
@@ -66,7 +68,7 @@ for(i in 1981:2014) {
 }
 
 
-sst.dat.all <- sst.dat.all %>% mutate(month=month(Date),year=year(Date),day=day(Date))
+sst.dat.all <- sst.dat.all %>% mutate(Date=as_date(Date)) %>% mutate(month=month(Date),year=year(Date),day=day(Date))
 
 ## Final output data is monthly mean SST based on the above daily SSTs
 

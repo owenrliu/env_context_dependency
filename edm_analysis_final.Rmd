@@ -16,6 +16,7 @@ csl: nature.csl
 ```{r global_options, include=F,message=F}
 library(knitr)
 knitr::opts_chunk$set(echo = FALSE,warning=FALSE,message = FALSE,results = 'asis')
+options(dplyr.summarise.inform = FALSE)
 ```
 
 ```{r setup, include=FALSE,message=F}
@@ -37,6 +38,9 @@ library(ggsci)
 library(extrafont)
 library(cowplot)
 library(magick)
+library(viridis)
+library(rsvg)
+library(tictoc)
 
 # plot theme
 plot_theme <-   theme_minimal()+
@@ -48,18 +52,21 @@ plot_theme <-   theme_minimal()+
         panel.border = element_rect(color="black",fill=NA))
 
 theme_set(plot_theme)
+```
 
+```{r}
 # color blind friendly palettes
-cols3A <- viridis_pal(begin=0,end=0.8,option="A")(4)[1:3]
-cols4A <- viridis_pal(begin=0,end=0.8,option="A")(4)
-cols3D <- viridis_pal(begin=0,end=0.8)(4)[1:3]
-cols4D <- viridis_pal(begin=0,end=0.8)(4)
+cols8 <- c("#000000","#2271B2","#3DB7E9","#00B19F","#359B73","#d55e00","#e69f00","#f0e442")
+# cols3A <- viridis_pal(begin=0,end=0.8,option="A")(4)[1:3]
+# cols4A <- viridis_pal(begin=0,end=0.8,option="A")(4)
+# cols3D <- viridis_pal(begin=0,end=0.8)(4)[1:3]
+# cols4D <- viridis_pal(begin=0,end=0.8)(4)
 
 ```
 
 ## Introduction
 
-This document accompanies the manuscript "Environmental Context Dependency in Species Interactions." The following analyses lay out the step-by-step building blocks of the empirical dynamic modeling approach [@Deyle2016; @Chang2017] that produced the final version of the analyses in the paper, and is meant to be an accessible guide for those interested in deep understanding and replication of the methods. The figures used in the published manuscript are included here.
+This document accompanies the manuscript "Environmental Context Dependency in Species Interactions." The following analyses lay out the step-by-step building blocks of the empirical dynamic modeling approach [@Deyle2016; @Chang2017] that produced the final version of the analyses in the paper, and is meant to be an accessible guide for those interested in deep understanding and replication of the methods. The figures used in the published manuscript are produced and included here.
 
 In the analyses that follows, in each step that involves a new type of EDM method, its logic will be briefly described.  However, keep in mind that the basic theory behind each individual method is the same: We use some dynamic information (from single or multiple time series) to reconstruct a shadow attractor/manifold, and then use the properties of that manifold to make predictions or estimate interactions. Short comments on the results of each step of analysis are included, but please see the main text for a more formal treatment of the Methods and a full interpretation and discussion of the results.
 
@@ -67,7 +74,7 @@ In the analyses that follows, in each step that involves a new type of EDM metho
 
 ### The San Nicolas Island Dataset
 
-San Nicolas Island is a small, remote island situated about 100 kilometers offshore from southern California.  The island itself is small, about 14 kilometer long and 5 km wide. The data in the analysis is from a sampling station on the western end of San Nicolas Island. The benthic monitoring data herein have been collected more or less every six months for more than 35 years by the USGS and its Western Ecological Research Center (USGS-WERC), and in 2013 the datasets were made available publicly through Ecological Archives[@Kenner2013]:
+San Nicolas Island is a small, remote island situated about 100 kilometers offshore from southern California.  The island itself is small, about 14 km long and 5 km wide. The data in the analysis is from a sampling station on the western end of San Nicolas Island. The benthic monitoring data herein have been collected more or less every six months for more than 35 years by the USGS and its Western Ecological Research Center (USGS-WERC), and in 2013 the datasets were made available publicly through Ecological Archives[@Kenner2013]:
 
 Michael C. Kenner, James A. Estes, M. Tim Tinker, James L. Bodkin, Robert K. Cowen, Christopher Harrold, Brian B. Hatfield, Mark Novak, Andrew Rassweiler, and Daniel C. Reed. 2013. A multi-decade time series of kelp forest community structure at San Nicolas Island, California (USA). Ecology 94:2654. http://dx.doi.org/10.1890/13-0561.1
 
@@ -114,10 +121,20 @@ Unlike the biological data, where there are unique spatial replicates, the physi
 
 Usual best practice for EDM is to create normalized time series, so that state-space reconstructions are not distorted by differences in orders of magnitude between variables[@Chang2017]. In addition, in this study we concatenate each species/station/swath time series into one long time series for each species, while preserving a time indicator (variable `period`) and a site identifier, to ensure that we do not "cross" the boundaries of replicate time series in analyses. Empirical dynamic modeling can use multiple spatial replicates in lieu of increased length of individual time series, to maximize the dynamic information that can be drawn from the system [@Hsieh2008;@Clark2015;@Chang2017]. Additionally, we de-trend the biological variables, removing any linear time trend to make the time series stationary.
 
-We join the monitoring and physical datasets and normalize all time series (see `produce_final_data.R`):
+We join the monitoring and physical datasets and normalize all time series, as well as use linear interpolation to fill in the small amount of missing data (see `produce_final_data.R`):
 
 ```{r load data, message=FALSE,echo=F}
 source("data/data preparation scripts/produce_final_data.R",local=knitr::knit_global())
+```
+```{r}
+# icons of the focal species
+
+lam_img <- magick::image_read_svg(here('icons', "laminaria-transparent.svg"))
+pter_img <- magick::image_read_svg(here('icons', "pterygophora-transparent.svg"))
+mac_img <- magick::image_read_svg(here('icons', "macrocystis-transparent.svg"))
+ymac_img <- magick::image_read_svg(here('icons', "sporophyte-transparent.svg"))
+purp_img <- magick::image_read_svg(here('icons', "purpleurchin-transparent.svg"))
+red_img <- magick::image_read_svg(here('icons', "redurchin-transparent.svg"))
 ```
 
 ```{r list of variables,echo=F,fig.cap="List of variables"}
@@ -136,14 +153,14 @@ tibble(Variable=colnames(westend),Description=c("Monitoring Transect","Monitorin
 namekey <- tibble(dataset=c(rep("Benthic density",6),rep("Physical",5)),short=names(westend[3:13]),
                   long=c("Laminaria","Macrocystis >1m","Pterygophora","Purple urchin","Red urchin","Macrocystis <1m","Multivariate ENSO Index","Pacific Decadal Oscillation","North Pacific Gyre Oscillation","Significant Wave Height","Sea Surface Temperature"),plotting=c("L. far","M. pyr","P. cal","S. pur","M. fra","M. pyr (j)","(P) MEI","(P) PDO","(P) NPGO","(P) SWH","(P) SST"))
 
-namekey <- bind_rows(namekey, data_frame(long="NA",dataset="NA",short="const",plotting="Constant")) %>%
+namekey <- bind_rows(namekey, tibble(long="NA",dataset="NA",short="const",plotting="Constant")) %>%
   
   # define column "plotting" as a factor so we can later control plotting order on figures
   mutate(plotting=factor(plotting,levels=c("(P) MEI","(P) PDO","(P) NPGO","(P) SWH","(P) SST","M. pyr","M. pyr (j)","L. far","P. cal","S. pur","M. fra","Constant")),
          long=factor(long,levels=c("Macrocystis >1m","Macrocystis <1m","Pterygophora","Laminaria","Purple urchin","Red urchin","Multivariate ENSO Index","Pacific Decadal Oscillation","North Pacific Gyre Oscillation","Significant Wave Height","Sea Surface Temperature","Constant")))
 
 # key relating monitoring period to its year/month
-period.key <- data_frame(year=rep(1980:2014,each=12),month=rep(1:12,35),period=c(rep(NA,8),rep(1,4),rep(2:69,each=6)))
+period.key <- tibble(year=rep(1980:2014,each=12),month=rep(1:12,35),period=c(rep(NA,8),rep(1,4),rep(2:69,each=6)))
 periods.first <- period.key %>% 
   distinct(period,.keep_all=T) %>%
   mutate(day=1) %>% #assume all monitoring done on first day of month
@@ -168,7 +185,7 @@ westend.mean_urchin_dens_plot <- westend.meandens %>%
   ggplot(aes(x=date_str,y=meandens,col=long))+
       geom_hline(yintercept=0)+
       geom_line(lwd=1,alpha=0.8,linetype=2,position=pd)+
-      geom_pointrange(aes(ymin=lower,ymax=upper),size=0.3,position=pd)+
+      geom_pointrange(aes(ymin=lower,ymax=upper),size=0.2,position=pd)+
       xlab("Year")+ylab("Normalized Density")+
       scale_color_manual(values=c("mediumpurple4","darkred"),
                          guide=guide_legend(title="",override.aes = list(size=0.5)))+
@@ -186,9 +203,9 @@ westend.mean_algal_dens_plot <- westend.meandens %>%
   ggplot(aes(x=date_str,y=meandens,col=long))+
       geom_hline(yintercept=0)+
       geom_line(lwd=1,alpha=0.8,position=pd)+
-      geom_pointrange(aes(ymin=lower,ymax=upper),size=0.3,position=pd)+
+      geom_pointrange(aes(ymin=lower,ymax=upper),size=0.2,position=pd)+
       xlab("")+ylab("Normalized Density")+
-      scale_color_manual(values=c("navyblue","gray50","darkgreen","darkcyan"),
+      scale_color_manual(values=cols8[1:4],
                          guide=guide_legend(title="",override.aes = list(size=0.5)))+
       guides(linetype="none")+
       theme(text = element_text(color="black",size=16),
@@ -212,6 +229,7 @@ mei.pdo.npgo.ts.plot <-westend %>%
   ggplot(aes(date_str,value,col=long))+
   geom_line(lwd=1.5)+
   geom_hline(yintercept=0,linetype=2,col="black")+
+  scale_color_manual(values=cols8[1:3])+
   labs(title="Physical Drivers: Climate Modes",x="",y="Normalized Index Value",col="")+
   theme(axis.title=element_text(size=10),
         axis.text.x=element_text(size=10),
@@ -227,6 +245,7 @@ sst.waves.ts.plot <-westend %>%
   ggplot(aes(date_str,value,col=long))+
   geom_line(lwd=1.5)+
   geom_hline(yintercept=0,linetype=2,col="black")+
+  scale_color_manual(values=cols8[5:6])+
   labs(title="Physical Drivers: Temperature and Disturbance",x="",y="Normalized Index Value",col="")+
   theme(axis.title=element_text(size=10),
         axis.text.x=element_text(size=10),
@@ -287,7 +306,8 @@ for(i in 1:length(study_spp)) {
   dat <- westend %>% select(matches(spp)) %>% as.data.frame()
   # dat <- westend.fd %>% select(matches(spp)) %>% as.data.frame()
   out <- simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),E=2:9,silent=T,stats_only = T) %>%
-    mutate(spp=namekey$long[match(spp,namekey$short)])
+    mutate(spp=namekey$long[match(spp,namekey$short)]) %>% 
+    mutate(across(where(is.list),as.double))
   westend.simp.list[[spp]] <- out
 }
 
@@ -317,7 +337,8 @@ for(i in 1:length(phys.vars)) {
   ind <- phys.vars[i]
   dat <- westend %>% select(matches(ind)) %>% as.data.frame()
   out <- simplex(as.numeric(dat[,1]),lib=c(1,63),E=2:10,silent=T) %>%
-    mutate(spp=namekey$long[match(ind,namekey$short)])
+    mutate(spp=namekey$long[match(ind,namekey$short)]) %>% 
+    mutate(across(where(is.list),as.double))
   phys.simp.list[[ind]] <- out
   westend.simp.list[[ind]] <- out
 }
@@ -354,7 +375,7 @@ westend.bestE <- c(westend.bestE,phys.bestE)
 
 ### Prediction Horizon test
 
-We also want to look at prediction decay for each variable, which is one piece of evidence that a dynamic system is nonlinear. Using the best *E* identified in the previous step, we attempt to make predictions increasing far into the future, instead of just one period ahead. A nonlinear system should show decreasing predictive power with increasing prediction horizon[@Sugihara1994]. This phenomenon is a property of deterministic chaos and is analagous to the "butterfly effect", where in a nonlinear system, trajectories in state-space are expected to diverge over time. To examine this effect, we hold *E* constant, and proceed with simplex projection as before, but varying the prediction horizon, $t_p$ (i.e., how many steps ahead we try to predict).
+We also want to look at prediction decay for each variable, which is one piece of evidence that a dynamic system is nonlinear. Using the best *E* identified in the previous step, we attempt to make predictions increasing far into the future, instead of just one period ahead. A nonlinear system should show decreasing predictive power with increasing prediction horizon[@Sugihara1994]. This phenomenon is a property of deterministic chaos and is analogous to the "butterfly effect", where in a nonlinear system, trajectories in state-space are expected to diverge over time. To examine this effect, we hold *E* constant, and proceed with simplex projection as before, but varying the prediction horizon, $t_p$ (i.e., how many steps ahead we try to predict).
 
 ```{r prediction horizon test,message=F,echo=F,fig.width=7,echo=F}
 # List to hold prediction horizon results
@@ -364,10 +385,12 @@ par(mfrow=c(3,2))
 for(i in 1:length(study_spp)) {
   spp <- study_spp[i]
   dat <- westend %>% select(matches(spp)) %>% as.data.frame()
-  out <- simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),silent=T,E=westend.bestE[spp],tp=1:10) %>%
-    mutate(spp=namekey$long[match(spp,namekey$short)])
+  out <- purrr::map_df(1:10,function(x) simplex(as.numeric(dat[,1]),lib=as.matrix(westend.segs),silent=T,E=westend.bestE[spp],tp=x)) %>%
+    mutate(spp=namekey$long[match(spp,namekey$short)]) %>% 
+    mutate(across(where(is.list),as.double))
   westend.tp.list[[spp]] <- out
 }
+
 
 #Plot time horizon vs. rho
 bind_rows(westend.tp.list) %>%
@@ -411,7 +434,8 @@ for(i in 1:length(study_spp)) {
   dat <- westend %>% select(matches(spp)) %>% as.data.frame()
   out <- s_map(as.numeric(dat[,1]),lib=as.matrix(westend.segs),E=westend.bestE[spp],theta = c(0, 1e-04, 3e-04,
   0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.5, 0.75, 1, 1.5, 2, 3, 4, 6, 8,10,12),silent=T) %>%
-    mutate(spp=namekey$long[match(spp,namekey$short)])
+    mutate(spp=namekey$long[match(spp,namekey$short)]) %>% 
+    mutate(across(where(is.list),as.double))
   westend.smap.list[[spp]] <- out
 }
 
@@ -426,8 +450,8 @@ spp_smap_plot <- bind_rows(westend.smap.list) %>%
   guides(color='none')
 spp_smap_plot
 
-ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/smap_species.pdf",spp_smap_plot,h=5,w=7)
-ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/smap_species.png",spp_smap_plot,h=5,w=7)
+# ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/smap_species.pdf",spp_smap_plot,h=5,w=7)
+# ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/smap_species.png",spp_smap_plot,h=5,w=7)
 
 rm(spp,dat,out)
 ```
@@ -459,124 +483,166 @@ The CCM algorithm uses a random sampling method to test multiple "versions" of e
 Each individual CCM analysis involves looks something like this:
 
 ```{r ccm example}
+westend.thin <- westend %>% dplyr::select(lam:sst)
+
 tempE <- westend.bestE['purp']
-temp <- suppressWarnings(ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 'mac',target_column = 'purp',lib_sizes = c(10,25,50,75,100,125,150,200,300,400,500),num_samples=150,replace=T,silent=T,RNGseed = 41389))
+temp <- suppressWarnings(ccm(westend.thin,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 'mac',target_column = 'purp',lib_sizes = c(10,25,50,75,100,125,150,200,300,400,500),num_samples=150,replace=T,silent=T,RNGseed = 41389))
 
 mac_xmap_purp <- temp %>%
-  group_by(lib_size)%>%
-  summarise(rhomean=mean(rho,na.rm=T),upper=quantile(rho, 0.9),lower=quantile(rho, 0.1))%>%
-  mutate(lower=pmax(0,lower)) %>% 
   ungroup()%>%
-  ggplot(aes(lib_size,rhomean))+
-  geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.3,fill="red")+
+  ggplot(aes(LibSize,`mac:purp`))+
+  # geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.3,fill="red")+
   geom_line(color="darkorchid3")+
   labs(x="Library Size",y=expression(paste(rho, " (predictive skill)")),title="Macrocystis xmap Purple Urchin")
+
+# mac_xmap_purp <- temp %>%
+#   group_by(LibSize)%>%
+#   summarise(rhomean=mean(rho,na.rm=T),upper=quantile(rho, 0.9),lower=quantile(rho, 0.1))%>%
+#   mutate(lower=pmax(0,lower)) %>% 
+#   ungroup()%>%
+#   ggplot(aes(lib_size,rhomean))+
+#   geom_ribbon(aes(ymin=lower,ymax=upper),alpha=0.3,fill="red")+
+#   geom_line(color="darkorchid3")+
+#   labs(x="Library Size",y=expression(paste(rho, " (predictive skill)")),title="Macrocystis xmap Purple Urchin")
 
 mac_xmap_purp
 # ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_example.pdf",mac_xmap_purp,h=5,w=7)
 # ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_example.png",mac_xmap_purp,h=5,w=7)
 ```
 
-In this example, we are asking whether there is evidence that *M. franciscanus* drives *Macrocystis* dynamics, and we evaluate that using library vectors from the *Macrocystis* time series to try to predict densities of *M. franciscanus*. In this case, the answer is yes: there is evidence that *M. franciscanus* drives *Macrocystis*, because the above signal is both significantly greater than zero, and is convergent.
+In this example, we are asking whether there is evidence that *S. purpuratus* drives *Macrocystis* dynamics, and we evaluate that using library vectors from the *Macrocystis* time series to try to predict densities of *S. purpuratus*. In this case, the answer is yes: there is evidence that *S. purpuratus* drives *Macrocystis*, because the above signal is both significantly greater than zero, and is convergent.
 
 Now we apply the above process to all possible species interactions and environment-species forcings.
 
-```{r ccm all species and physical vars, echo=F,warning=F,fig.width=7}
-# Rows hold predicted variables, columns hold forcing variables. There are more columns than rows since the physical variables are included as potential forcing factors.
-n_col <- dim(westend)[2]-2
-n_row <- dim(westend)[2]-7
-col_names <- colnames(westend)[3:(n_col+2)]
-row_names <- colnames(westend)[3:(n_row+2)]
-westend.xmap_mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
+```{r}
+ccm_to_test <- tidyr::crossing(x=c(study_spp,phys.vars),y=c(study_spp,phys.vars)) %>% 
+  mutate(Etarg=westend.bestE[y]) %>% 
+  filter(x!=y) %>% 
+  filter(!(x%in%phys.vars))
 
-## CCM causation criterion 1: cross-map skill greater than zero
-# matrix to store a bootstrapped p-value, measuring the probability that a given xmap is greater than zero (calculated as 1 minus the number of positive results for rho divided by the number of iterations)
-westend.p1.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-
-## CCM causation criterion 2: evidence for convergence
-# similarly, matrix to store a bootstrapped p-value, this time a t-test value between library size 10 and library size 500, to see if the rho at large library is significantly greater than the rho at small library size (i.e., looking for convergence).
-westend.p2.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-
-## CCM causation criterion 3: robust to seasonal null model
-# matrix to store the proportion of times an original CCM rho value is exceeded by a surrogate rho value, calculated using the library vector and a shuffled version of the target vector where seasonality (2 observations per year) is maintained, and the resulting residuals are shuffled (see ?rEDM::make_surrogate_seasonal)
-westend.p3.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-
-# if p1, p2, and p3 are positive, indicate overall significant causal signal
-westend.ptot.mat <- array(NA,dim=c(n_row,n_col),dimnames=list(row_names,col_names))
-
-## Run CCM for each combination of variables
-for(i in 1:n_row) {
-  for(j in 1:n_col) {
-    if(i != j) {
-      # remember, we use the best embedding dimension for the target variable (the variable we're cross-mapping to, i.e. the putative forcing variable)
-      tempE=westend.bestE[col_names[j]]
-      temp <- suppressWarnings(ccm(westend,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=tempE,lib_column= 2+i,target_column = 2+j,lib_sizes = c(10,500),num_samples=100,replace=T,silent=T,RNGseed = 41389))
-      
-     # mean rho at library size 500
-      rhomeans <- temp %>% ccm_means()
-      westend.xmap_mat[i,j] <- rhomeans$rho[rhomeans$lib_size==500]
-      
-      # first p-value (is cross map skill greater than zero? at library size 500)
-      p1 <- temp %>% filter(lib_size==500) %>% 
-        mutate(pos=ifelse(rho>0,1,0)) %>%
-        summarise(p=(1-sum(pos)/n()))
-      westend.p1.mat[i,j] <- as.numeric(p1)
-      
-      # second p-value (rho at lib-size 500 greater than rho at lib-size 10? By more than 0.05?)
-      p2 <- t.test(temp$rho[temp$lib_size==10],temp$rho[temp$lib_size==500])$p.value
-      if((rhomeans$rho[rhomeans$lib_size==500]-rhomeans$rho[rhomeans$lib_size==10])<0.05) p2 <- 1
-      westend.p2.mat[i,j] <- as.numeric(p2)
-      
-      # third p-value test- seasonal null model
-      # create 100 surrogate (target) tseries
-      surr_ts <- westend %>% select(site,2+j) %>% rename(orig=2) %>% 
-        # make surrogate time series using rEDM::make_surrogate_seasonal, while making sure to maintain seams in the original data
-        group_by(site) %>% 
-        mutate(splined=zoo::na.spline(orig)) %>% 
-        nest() %>% 
-        mutate(surr=purrr::map(data,function(df){make_surrogate_seasonal(df$splined,num_surr=100,T_period=2)})) %>% 
-        ungroup() %>% 
-        select(surr) %>% 
-        .[[1]] %>% 
-        do.call(rbind,.)
-      # original (library) time series
-      orig_ts <- westend %>% select(2+i) %>% as.matrix()
-      
-      surr_rhos <- numeric()
-      for(k in 1:ncol(surr_ts)){
-        surr_rhos[k] <- ccm(cbind(orig_ts, surr_ts[,k]), E = tempE, lib_column = 1, target_column = 2, lib_sizes = 500,
-                            num_samples=100,replace=F,silent=T,RNGseed = 41389)$rho
-      }
-      # is the original rho greater than 95% of the surrogate rhos?
-      p3 <- 1-sum(westend.xmap_mat[i,j]>surr_rhos)/100
-      westend.p3.mat[i,j] <- as.numeric(p3)
-      # overall significance (are p1, p2, and p3 signficant at alpha 0.05?)
-      westend.ptot.mat[i,j] <- ifelse(p1<0.05 & p2<0.05 & p3<=0.05,1,0)
-    }
-  }
+two_way_ccm <- function(x,y,Etarg){
+  pr() # for tracking progress
+  ccm1 <- suppressWarnings(ccm(westend.thin,lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),E=Etarg,lib_column= x,target_column = y,lib_sizes = c(10,500),num_samples=100,replace=T,stats_only=F,silent=T,RNGseed = 41389))
+  out <- bind_rows(ccm1$CCM1_PredictStat,ccm1$CCM2_PredictStat)
+  toc()
+  return(out)
 }
-rm(n_col,n_row,col_names,row_names,p1,p2,p3,tempE,temp,rhomeans)
 
-# keep only signficant cross-mappings
-westend.xmap_mat <- westend.xmap_mat*westend.ptot.mat %>% as.data.frame()
-westend.xmap_rast <- westend.xmap_mat %>% 
-  mutate(predictee=row.names(westend.xmap_mat)) %>% 
-  gather(key=predictor,value=rho,-predictee)
+# test purp
+# testpurp <- two_way_ccm("purp","mei",9)
+```
 
-# If rho is zero, replace with NA (no significant causal signal)
-westend.xmap_rast$rho[westend.xmap_rast$rho==0] <- NA
 
-# Names for plotting to distinguish biological and physical variables
-westend.xmap_rast <- westend.xmap_rast %>% 
+```{r}
+library(furrr)
+library(future)
+library(progressr)
+future::plan(multisession)
+
+with_progress({
+  pr <- progressor(steps=nrow(ccm_to_test))
+  westend.ccm<- furrr::future_pmap_dfr(ccm_to_test,two_way_ccm)
+})
+
+westend.ccmmeans <- westend.ccm %>% 
+  group_by(lib,target,E,LibSize) %>% 
+  mutate(ispos=rho>0) %>% 
+  # first check- are more than 95% of sample rhos at a library size of 500 greater than zero?
+  summarise(rhomean=mean(rho,na.rm=T),rhosd=sd(rho,na.rm=T),p1=1-(sum(ispos)/n())) %>% 
+  ungroup() %>% 
+  group_by(lib,target,E) %>% 
+  mutate(dif=rhomean[LibSize==500]-rhomean[LibSize==10]) %>% 
+  ungroup() %>% 
+  mutate(rholow=rhomean-rhosd,rhohigh=rhomean+rhosd) %>% 
+  mutate(Etarg=westend.bestE[target]) %>% 
+  filter(Etarg==E) %>% 
+  dplyr::select(-Etarg)
+
+p1 <- westend.ccmmeans %>% 
+  filter(LibSize==500) %>% 
+  mutate(p1check=ifelse(p1<=0.05,1,0))
+p2 <- westend.ccm %>%
+  group_split(lib,target) %>% 
+  purrr::map_df(function(d){
+     p=t.test(d$rho[d$LibSize==10],d$rho[d$LibSize==500])$p.value
+     d %>% distinct(lib,target) %>% mutate(p2=p)
+  }) %>% 
+  left_join(westend.ccmmeans) %>%
+  mutate(p2=ifelse(dif<=0.05,1,p2)) %>% 
+  mutate(p2check=ifelse(p2<=0.05,1,0)) %>% 
+  dplyr::select(lib,target,dif,p2,p2check) %>% 
+  distinct() %>% 
+  drop_na()
+```
+
+```{r}
+# Surrogate time series
+# third p-value test- seasonal null model
+# create 100 surrogate (target) tseries
+make_100_surrogates <- function(spp){
+  westend %>% 
+    dplyr::select(site,all_of(spp))%>% 
+    rename(orig=2) %>% 
+    # make surrogate time series using rEDM::make_surrogate_data, while making sure to maintain seams in the original data
+    group_by(site) %>%
+    nest() %>% 
+    mutate(surr=purrr::map(data,function(df){make_surrogate_data(df$orig,method="seasonal",num_surr=100,T_period=2)})) %>% 
+    ungroup() %>% 
+    dplyr::select(surr) %>% 
+    .[[1]] %>% 
+    do.call(rbind,.)
+}
+
+surrogates <- purrr::map(c(study_spp,phys.vars),make_100_surrogates) %>% set_names(c(study_spp,phys.vars))
+
+test_p3 <- function(libspp,tarspp){
+  pr() # for tracking progress
+  orig <- westend[[libspp]]
+  surr <- surrogates[[tarspp]]
+  surr_rhos <- numeric()
+  for(k in 1:ncol(surr)){
+    tempccm <- ccm(cbind(orig, surr[,k]), E = westend.bestE[[tarspp]],lib=as.matrix(westend.segs),pred=as.matrix(westend.segs),lib_column = 1, target_column = 2, lib_sizes = c(500),num_samples=10,replace=F,silent=T,RNGseed = 41389,stats_only = F)$CCM1_PredictStat
+    surr_rhos[k] <- tempccm %>% group_by(LibSize) %>% summarise(rhomean=mean(rho,na.rm=T)) %>% ungroup() %>% pull(rhomean)
+  }
+  return(surr_rhos)
+}
+
+with_progress({
+  pr <- progressor(steps=nrow(ccm_to_test))
+  p3_list <- future_map2(ccm_to_test$x,ccm_to_test$y,test_p3)
+})
+
+p3_df <- ccm_to_test %>% 
+  mutate(p3rho=p3_list) %>% 
+  left_join(p1,by=c("x"="lib","y"="target")) %>% 
+  mutate(p3check=purrr::map2(p3rho,rhomean, function(i,j) sum(i>j))) %>% 
+  # is the original rho greater than 95% of the surrogate rhos?
+  # if fewer than 6 (out of 100) estimated rhos are greater than the original ccm rhomean, test is passed
+  mutate(p3check=ifelse(p3check<6,1,0)) %>% 
+  dplyr::select(lib=x,target=y,p3check)
+
+all_checks <- p1 %>% dplyr::select(lib,target,E,rhomean,p1check) %>% left_join(p2) %>% left_join(p3_df) %>% 
+  # does the CCM pass all checks?
+  mutate(is_signif=ifelse((p1check+p2check+p3check)==3,1,0))
+future::plan(sequential)
+```
+
+```{r}
+# plot
+westend.xmap_rast <- all_checks %>% 
+  rename(predictor=target,predictee=lib) %>% 
   mutate(force.name=namekey$plotting[match(predictor,namekey$short)]) %>%
-  mutate(pred.name=namekey$plotting[match(predictee,namekey$short)])
+  mutate(pred.name=namekey$plotting[match(predictee,namekey$short)]) %>% 
+  mutate(rho=ifelse(is_signif==0,NA,rhomean))
 
-## plot
+westend.xmap_rast <- westend.xmap_rast %>% 
+  bind_rows(tibble(force.name=unique(namekey$plotting)[1:6],pred.name=unique(namekey$plotting)[1:6]))
+
 westend.xmap_all_plot <- ggplot(westend.xmap_rast,aes(x=force.name,y=pred.name,fill=rho)) +
   geom_raster() +
   scale_fill_gradient(low = "#9AFF9A", high = "#548B54", space = "Lab", na.value = "grey50", 
       guide = "colourbar",limits=c(0,0.9),breaks=c(0.2,0.4,0.6,0.8),name=expression(paste(rho, "(skill)"))) +
-  geom_text(aes(label=round(rho,2)),size=3)+
+  geom_text(aes(label=round(rho,3)),size=3)+
   ggtitle("Kelp Forest Convergent Cross Mapping") +
   xlab("Predictor (Forcing Variable)") +
   ylab("Predicted Variable") +
@@ -589,15 +655,16 @@ westend.xmap_all_plot <- ggplot(westend.xmap_rast,aes(x=force.name,y=pred.name,f
 westend.xmap_all_plot
 # ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_all.pdf",westend.xmap_all_plot,h=5,w=7)
 # ggsave(filename="C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_all.png",westend.xmap_all_plot,h=5,w=7)
+
 ```
 
 The plot shows cross-mapped (predictor, or forcing) variables in the columns, while rows are predicted variables (i.e., columns cause rows). Gray indicates a lack of significant causal signal--failure to satisfy one of the above criteria--and darker colors represent higher cross-map skill.
 
-From this plot, we can make a few observations. The five physical forcing variables are represented in the first five columns, followed by the algae and urchin species. Many physical variables show causal relationships with kelp forest species, especially the North Pacific Gyre Oscillation and maximum wave height (physical disturbance), which show causal links to almost all the biological variables. The NPGO is cross-mapped well by the purple urchin *Strongylocentrotus purpuratus*, while the NPGO, SST and wave height all show a strong influence on adult *Macrocystis* dynamics. So already we are seeing effects that we might expect based on known interactions between physical variables and biological dynamics [@Reed2011;@Bell2015].
+From this plot, we can make a few observations. The five physical forcing variables are represented in the first five columns, followed by the algae and urchin species. Many physical variables show causal relationships with kelp forest species, especially the North Pacific Gyre Oscillation and Pacific Decadal Oscillation, which show causal links to all of the biological variables. The NPGO is cross-mapped well by the purple urchin *Strongylocentrotus purpuratus*, while the NPGO, PDO and MEI indices all show a strong influence on adult *Macrocystis* dynamics. Links between SST and physical disturbance (i.e., significant wave height) and the focal study species are non-significant or small.
 
-Additionally, adult *Macrocystis* itself seems to be the first or second most important driver of the dynamics of all the other species in the tropic web, supporting the decades of research showing the importance of giant kelp as a foundational species [@Graham2007c;@Dayton1985], but further suggesting that its dynamics fundamentally drive the dynamics of other species. Interestingly, while juvenile and adult *Macrocystis* and *Pterygophora* seem to be strongly driven by environment, *Laminaria* is more driven by adult *Macrocystis* and the two urchin species, suggestive of a more opportunistic life history.
+Additionally, adult *Macrocystis* itself seems to be an important driver of the dynamics of all the other species in the tropic web, supporting the decades of research showing the importance of giant kelp as a foundation species [@Graham2007c;@Dayton1985], but further suggesting that its dynamics fundamentally drive the dynamics of other species. Interestingly, while juvenile and adult *Macrocystis* and *Pterygophora* seem to be strongly driven by both environmental and urchin dynamics, *Laminaria* seems to be driven less by the oceanographic variables, and more by the dynamics of its competitors (i.e., *Macrocystis* and *Pterygophora*) and consumers (i.e., urchins).
 
-Both sea urchin species are causally linked to *Macrocystis* density, and *M franciscanus* drives *S. purpuratus* dynamics. This analysis alone, however, does not yet tell us whether the interaction between *S. purpuratus* and *M. franciscanus* represents apparent mutualism, apparent competition, or a mixture of both at different times. To further investigate the direction and magnitude of the species interactions themselves, we next build multivariate EDM models that explicitly measure dynamic species interaction strengths (and directions).
+Both sea urchin species are causally linked to *Macrocystis* density and to one another. This analysis alone, however, does not yet tell us whether the interaction between *S. purpuratus* and *M. franciscanus* represents apparent mutualism, apparent competition, or a mixture of both at different times. To further investigate the direction and magnitude of the species interactions themselves, we next build multivariate EDM models that explicitly measure dynamic species interaction strengths (and directions).
 
 ***
 
@@ -608,21 +675,33 @@ The CCM results translated into an empirical interaction web looks like this:
 ```{r network,fig.height=7,fig.width=7}
 ## i graph
 # connections matrix for the network based on the CCM results above
-connect.mat <- t(westend.ptot.mat) %>% 
-  as.data.frame() %>%
-  mutate(mei=rep(0,nrow(.)),pdo=rep(0,nrow(.)),npgo=rep(0,nrow(.)),waves=rep(0,nrow(.)),sst=rep(0,nrow(.)))%>%
+connect.mat <- tidyr::crossing(predictee=c(study_spp,phys.vars),predictor=c(study_spp,phys.vars)) %>% 
+  left_join(westend.xmap_rast %>% dplyr::select(predictee,predictor,rho)) %>% 
+  mutate(connected=ifelse(is.na(rho),0,1)) %>% 
+  dplyr::select(predictee,predictor,connected) %>% 
+  pivot_wider(names_from = "predictee",values_from = "connected") %>% 
+# reorder such that similar variables are adjacent, for graphing purposes
+  slice(c(1,2,6,11,7,8,3,4,5,9,10)) %>% 
+  dplyr::select(-1) %>% 
   as.matrix()
+# reorder such that similar variables are adjacent, for graphing purposes
+connect.mat <- connect.mat[,c(1,2,6,11,7,8,3,4,5,9,10)]
 
 # edges (arrows) weighted based on CCM rho value
-edge.weight.mat <- t(westend.xmap_mat)%>%
-  as.data.frame() %>%
-  mutate(mei=rep(0,nrow(.)),pdo=rep(0,nrow(.)),npgo=rep(0,nrow(.)),waves=rep(0,nrow(.)),sst=rep(0,nrow(.)))%>%
+edge.weight.mat <- tidyr::crossing(predictee=c(study_spp,phys.vars),predictor=c(study_spp,phys.vars)) %>% 
+  left_join(westend.xmap_rast %>% dplyr::select(predictee,predictor,rho)) %>% 
+  dplyr::select(predictee,predictor,rho) %>% 
+  pivot_wider(names_from = "predictee",values_from = "rho") %>% 
+# reorder such that similar variables are adjacent, for graphing purposes
+  slice(c(1,2,6,11,7,8,3,4,5,9,10)) %>% 
+  dplyr::select(-1) %>% 
   as.matrix()
 edge.weight.mat[is.na(edge.weight.mat)]<-0
+edge.weight.mat <- edge.weight.mat[,c(1,2,6,11,7,8,3,4,5,9,10)]
 
 names <- map_chr(colnames(connect.mat), function(x) as.character(namekey$plotting[match(x,namekey$short)]))
-names[6] <- "M. pyr\n(j)"
-names [7:11] <- c("MEI","PDO","NPGO","SWH","SST")
+names[4] <- "M. pyr\n(j)"
+names [c(7:11)] <- c("MEI","NPGO","PDO","SST","SWH")
 
 # initiate the igraph
 g2 <- graph.adjacency(connect.mat)
@@ -631,7 +710,7 @@ g2 <- graph.adjacency(connect.mat)
 V(g2)$name <-names
 
 # vector of node colors for plotting
-vert.cols <- c(rep("#238B45",3),rep("#BEBADA",2),"#238B45",rep("#8DD3C7",5))
+vert.cols <- c(rep("#238B45",4),rep("#BEBADA",2),rep("#8DD3C7",5))
 
 # weighted edges, with width and color
 edge.weights <- as.numeric(t(edge.weight.mat))[t(edge.weight.mat) != 0]*5
@@ -645,21 +724,39 @@ edge.cols[edge.cols==101] <- 100
 edge.cols <- edge.pal[edge.cols]
 
 # some edges must be curved to look okay in the graph
-curves <- rep(0,length(edge.weights))
-curves[c(2,4,7,18,21)] <-0.4
-curves[c(15,17,19)] <-0.3
-curves[c(1,5,6,8,16,20,43)] <- 0.2
-curves[c(10,13)] <- -0.2
-curves[c(9)] <- -0.1
+# curves <- rep(0,length(edge.weights))
+# curves[c(2,4,7,18,21)] <-0.4
+# curves[c(15,17,19)] <-0.3
+# curves[c(1,5,6,8,16,20,43)] <- 0.2
+# curves[c(10,13)] <- -0.2
+curves[c(9,22)] <- -0.3
+curves[7] <- -0.3
+# curves[c(9)] <- -0.3
 
 #plot
 # png("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_network.png",height=500,width=600)
 # pdf("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_network.pdf")
-plot(g2,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves,margin=0,vertex.size=20,rescale=T,edge.lty=1,edge.color=edge.cols,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="")
+plot(g2,asp=0.8, vertex.label.color="black",vertex.label.family="HersheySans", vertex.label.cex=0.7, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves,margin=0,vertex.size=20,rescale=T,edge.lty=1,edge.color=edge.cols,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="")
 # dev.off()
 ```
 
-In this network, each node represents a variable. The maximum number of outgoing interactions is 5 (6 total biological variables minus the variable itself), and incoming is 10 (5 biological and 5 physical variables). Algae species are in dark green, while the two urchin species are in purple and the physical drivers are in blue-green. Again, we see here as above that young *Macrocystis* (denoted M. pyr (j))is forced by all other variables in the system, but in turn shows a causal forcing on only 3 of the 5 other biological variables, and its forcing of *S. purpuratus* is very weak. Again we can see that while the web is not entirely saturated, there are many unidirectional forcings, and a prevalence of bidirectional causation as well (A forces B *and* B forces A). The adult *Macrocystis* is causally connected to all variables in the analysis.
+```{r}
+net_img <- magick::image_read_pdf("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_network.pdf")
+
+network_fig_icons<- ggdraw()+
+  draw_image(net_img)+
+  draw_image(red_img,x=0.15,y=0.53,width=0.15,height=0.15,clip = 'on')+
+  draw_image(purp_img,x=0.23,y=0.7,width=0.22,height=0.22,clip = 'on')+
+  draw_image(ymac_img,x=0.38,y=0.79,width=0.2,height=0.2,clip = 'on')+
+  draw_image(pter_img,x=0.53,y=0.77,width=0.2,height=0.2,clip = 'on')+
+  draw_image(mac_img,x=0.65,y=0.67,width=0.2,height=0.2,clip = 'on')+
+  draw_image(lam_img,x=0.7,y=0.45,width=0.2,height=0.2,clip = 'on')
+
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_network_icons.pdf",plot=network_fig_icons,h=4,w=6)
+```
+
+
+In this network, each node represents a variable. The maximum number of outgoing interactions is 5 (6 total biological variables minus the variable itself), and incoming is 10 (5 biological and 5 physical variables). Algae species are in dark green, while the two urchin species are in purple and the physical drivers are in blue-green. Again, we see here as above that young *Macrocystis* (denoted M. pyr (j))is forced by all other variables in the system except SST, and in turn shows a causal forcing on the 5 other biological variables, with varying cross-mapping "strength" (correlation, edge weight in the network graph). Again we can see that while the web is not entirely saturated, there are many unidirectional forcings, and a prevalence of bidirectional causation as well (A forces B *and* B forces A). The adult *Macrocystis* is causally connected to all variables in the analysis except SST.
 
 ***
 
@@ -769,55 +866,32 @@ However, as a further illustration of how predictions are made in EDM, consider 
 ```{r general smap model fxn, include=F}
 # Generalized function to build a multivariate S-map model. Function takes the data, a data frame of the segments (i.e., the denoting the different within-site swaths denoting breaks in the time series), the target species (the one for which we are building a model), and a character vector of the other, causal variables. The function returns the fitted model and the coefficients (i.e., the species interaction partials), the model statistics, and a box plot of the interactions coefficients for that species across all the data.
 
+# EDIT 04.25.2022: block_lnlp needs a fix in the summarizing of the s-map model
+source("block_lnlp_fix.R")
+
 smap_multi <- function(sitedat,libsegs,predsegs=libsegs,species,causalvars,...) {
   
-  full.mod <- block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(libsegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T)
+  full.mod <- suppressWarnings(block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(predsegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T))
 
   opttheta <- full.mod$theta[full.mod$rho==max(full.mod$rho)]
   
-  best.mod <- block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(predsegs),columns=causalvars,target_column = species,theta = opttheta,method="s-map",save_smap_coefficients=T,silent=T,...)
+  best.mod <- block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(predsegs),columns=causalvars,target_column = species,theta = opttheta,method="s-map",save_smap_coefficients=T,silent=T)
   
   # gather and organize model output
-  t <- best.mod$model_output[[1]]$time
+  # t <- best.mod$smap_coefficients[[1]]$Index
   
-  coeff.names <- c(causalvars,"const")
+  coeff.names <- c('time',causalvars,"const")
   # Save interaction coefficients
   coeffs <- best.mod$smap_coefficients[[1]]
   names(coeffs) <- coeff.names
   
   # # Model output-- time, observations, predictions. match time indicator with observations (one period ahead)
-  coeffs <- coeffs %>% mutate(time=t) %>% mutate(period=rep(1:63,10))
-  
-  # Save coefficient variances (sensu Deyle 2016; we have a nxn variance-covariance matrix for each estimated point, where n is the total number of causal variables for whom coefficients are estimated, plus the constant term)
-  # Variances for individual coefficients are the diagonals of each covariance matrix
-  coeffs.variances <- best.mod$smap_coefficient_covariances[[1]] %>%
-    purrr::map_dfr(function(x) {
-      # if no estimate, no variance associated with it (NULL)
-      if(is.null(x)) x <- matrix(NaN,nrow=length(coeff.names),ncol=length(coeff.names))
-      # pull out diagonal elements, add variable names
-      out <- t(diag(x)) %>% as.data.frame()
-      names(out) <- coeff.names
-      out
-      })%>%
-    
-    # add period identifier and overall time stamp
-    # mutate(time=t) %>% complete(time=full_seq(c(1,630),1)) %>% mutate(period=rep(1:63,10))
-    mutate(time=t) %>% mutate(period=rep(1:63,10))
+  coeffs <- coeffs %>% mutate(period=c(1,rep(1:63,10)))
   
   # long form for plotting, including variance
   coeffs.long <- coeffs %>%
     gather(key=effect,value=value,-period,-time,na.rm=T) %>%
     left_join(namekey, by=c("effect"="short"))
-  
-  # long form variances
-  coeffs.variances.long <- coeffs.variances %>%
-    gather(key=effect,value=variance,-period,-time,na.rm=T) %>%
-    left_join(namekey,by=c("effect"="short"))
-  
-  coeffs.long <- coeffs.long %>%
-    left_join(coeffs.variances.long,by=c("time","period","effect","dataset","long","plotting")) %>%
-    # add standard deviation and +/- 95% CI (1.96*SD)
-    mutate(sd=sqrt(variance),upper=value+1.96*sd,lower=value-1.96*sd)
   
   # box plot of interactions
   sppname <- species
@@ -831,7 +905,9 @@ smap_multi <- function(sitedat,libsegs,predsegs=libsegs,species,causalvars,...) 
   
   ## Outputs (to go in a list)
 
-  outlist <- list(model=best.mod,coeffs=coeffs,coeffs.variances=coeffs.variances,coeffs.long= coeffs.long,plot=int.box)
+  outlist <- list(model=best.mod,coeffs=coeffs,
+                  # coeffs.variances=coeffs.variances,
+                  coeffs.long= coeffs.long,plot=int.box)
   return(outlist)
 }
 ```
@@ -840,7 +916,7 @@ smap_multi <- function(sitedat,libsegs,predsegs=libsegs,species,causalvars,...) 
 ```{r apply multivariate models, include=F,warnings=F}
 # Apply to the West End data
 westend.multi.mods <- purrr::map(list("mac","purp","lam","ymac","red","pter"),function(x) {
-  smap_multi(sitedat=westend,libsegs=westend.segs,species=x,causalvars=westend.causal.vars[[x]])
+  smap_multi(sitedat=westend.thin,libsegs=westend.segs,species=x,causalvars=westend.causal.vars[[x]])
 })
 names(westend.multi.mods) <- c("mac","purp","lam","ymac","red","pter")
 ```
@@ -954,11 +1030,11 @@ all.mod.coeffs.plot.box
 
 These are violin plots of estimated species interaction strengths from S-map models for the five focal species (panels top to bottom): *Macrocystis* adults, *Macrocystis* juveniles, *Pterygophora*, *Laminaria*, purple urchin, and red urchin. Each colored distribution represents the distribution of all estimated interaction coefficients (x-axis) of an interacting or forcing species (left y-axis) on a modeled species (right y-axis) across all data for a given model (white triangles: mean; vertical lines: median). Each box represents 500-520 estimated interactions. Correlation coefficient between predictions and observations denoted for each model. Color denotes hypothesized interaction type, including interspecific competition (between algae species or between urchin species), herbivory (urchin effect on algae), consumption (algae effect on urchins), and intraspecies interaction (the estimated interaction of a species with itself). Abbreviations: S. pur, *Strongylocentrotus purpuratus*; P cal., *Pterygophora californica*; M. pyr, *Macrocystis pyrifera*; M. fra, *Mesocentrotus franciscanus*; L. far, *Laminaria farlowii*.
 
-It is clear from the boxplots that fitted intra- and interspecific interactions display evidence of positive, negative, and neutral interactions. Over the range of conditions in the time series, each species variable with the exception of young *Macrocystis* has positive intraspecific effects; that is, each species’ density has a positive estimated effect on itself, a combination of survivorship and new recruitment. Relative to the magnitude of other interactions, this intraspecific effect is strongest in the two urchin species.
+It is clear from the boxplots that fitted intra- and interspecific interactions display evidence of positive, negative, and neutral interactions. Over the range of conditions in the time series, each species variable with the exception of *Macrocystis* has positive intraspecific effects; that is, each species’ density has a positive estimated effect on itself, a combination of survivorship and new recruitment. Relative to the magnitude of other interactions, this intraspecific effect is strongest in the two urchin species.
 
-The interactions of the urchin and algal species show evidence of herbivory (purple boxes). Both red and purple urchin density have predominantly negative effect on adult and juvenile *Macrocystis*, *Laminaria*, and *Pterygophora*, effects that were consistent with our hypotheses. However, the converse effects of algal density on urchin density (green boxes) are generally small, and not consistently positive.
+The interactions of the urchin and algal species show evidence of herbivory (purple interactions in the plot). Both red and purple urchin density have predominantly negative effect on adult and juvenile *Macrocystis* and *Pterygophora*, effects that were consistent with our hypotheses. The exception is a predominantly positive effect of the purple urchin *S purpuratus* on *Laminaria*. The converse effects of algal density on urchin density (green boxes) are generally small, except again for the effect of *Laminaria*, which is consistently positive.
 
-Few strong and consistent competitive interactions (red and orange boxes for urchin and algal competition, respectively) are observed in model estimates. Estimates of the interaction between the two urchin species are near zero. The effect of red on purple urchins is small relative to other forcing factors in the urchin models, and is occasionally positive (apparent mutualism). Among the algal species, the clearest negative competitive effect is that of *Laminaria* on adult *Macrocystis* (top panel). Other interactions are not always negative (competitive), and contrary to expectations, positive values were estimated for many interactions. *Pterygophora* has only intermittent negative effects on young *Macrocystis*, and there is little evidence of an interaction between *Pterygophora* and *Laminaria*. Perhaps most surprisingly, *Macrocystis* does not display a consistent negative effect on *Pterygophora*, contrary to our hypothesis of *Macrocystis* competitive dominance [@Dayton1999].
+Few strong and consistent competitive interactions (red and orange boxes for urchin and algal competition, respectively) are observed in model estimates. Estimates of the interaction between the two urchin species are near zero. The effect of red on purple urchins is small relative to other forcing factors in the urchin models, and is occasionally positive (apparent mutualism). Among the algal species, the clearest negative competitive effect is that of *Pterygophora* on young *Macrocystis*. Other interactions are not always negative (competitive), and contrary to expectations, positive values were estimated for most algal interactions. Perhaps most surprisingly, *Macrocystis* does not display a consistent negative effect on *Pterygophora*, contrary to our hypothesis of *Macrocystis* competitive dominance, and instead has a positive estimated interaction under most conditions [@Dayton1999].
 
 ***
 
@@ -1004,11 +1080,11 @@ all.phys.coeffs.plot
 
 In this figure, each distribution represents the distribution of estimated effect of a physical driver (left y-axis) on the modeled species across all data for a given model. Empty rows indicate physical variables that were not included in specific species models because of a lack of a causal signal from our CCM. Abbreviations: SWH, significant wave height; SST, sea surface temperature; PDO, Pacific Decadal Oscillation; NPGO, North Pacific Gyre Oscillation; MEI, Multivariate ENSO Index.
 
-Physical forcing variables affect the dynamics of all species in the study, to varying degrees. *Macrocystis* is the only species in the analysis that displays a significant cross-mapping signal (significant causal forcing) with all five included physical variables. The positive effect of the NPGO is consistent with our expectations [@Bell2015]. However, the PDO index has a positive effect on *Macrocystis*, contrary to expectation because in general, positive values of the PDO are associated with warmer SST and nutrient-poor conditions in the northeast Pacific. *Macrocystis* recruits, on the other hand, are positively affected by the MEI, SWH, and SST, and negatively affected by the PDO and NPGO. Together, the effects of physical forcing on *Macrocystis* suggest that conditions that are poor for survivorship of adults (higher SST, less nutrient availability, greater disturbance) may produce favorable conditions for recruitment of new sporophytes.
+Physical forcing variables affect the dynamics of all species in the study, to varying degrees. According to CCM analysis, no species were driven directly by SST, instead responding to the manifestations of the PDO, NPGO, and MEI. The positive mean effect of the NPGO on *Macrocystis* is consistent with our expectations [@Bell2015]. However, the PDO index has a positive effect on *Macrocystis*, contrary to expectation because in general, positive values of the PDO are associated with warmer SST and nutrient-poor conditions in the northeast Pacific. *Macrocystis* recruits, on the other hand, are positively affected by the NPGO  as well, by predominantly negatively affected by the PDO, SWH, and MEI. Together, the effects of physical forcing on *Macrocystis* suggest that the high phases of the NPGO may be favorable for both recruitment and growth of the giant kelp, while conditions associated with the high phase of the PDO may indicate favorable conditions for survivorship or growth, but poor conditions for the recruitment of new sporophytes.
 
-The physical variables are more influential drivers of *Macrocystis* than *Pterygophora* dynamics. No physical variable was causally linked to *Laminaria* density. Moreover, although the PDO, NPGO, SWH and SST were identified as causal variables for *Pterygophora* density, the magnitudes of their effects are small and inconsistent.
+The physical variables are more variable drivers of *Macrocystis* than *Pterygophora* dynamics. All the algal species were predominantly positively associated with greater values of the NPGO and negatively with the MEI.
 
-For the purple urchin, the PDO, NPGO, and MEI all have on average negative but variable effects.
+For the purple and red urchins, SWH and NPGO have on average negative but variable effects, while the effects of the PDO and MEI are near zero or slightly positive.
 
 ***
 ### Distribution of Interaction Strengths by Type
@@ -1022,15 +1098,15 @@ interaction_distribution_by_type <- all.mod.coeffs.long %>%
   group_by(type) %>%
   mutate(mean_int=mean(value,na.rm=T),median_int=median(value,na.rm=T))%>%
   ungroup()%>%
-  ggplot(aes(value,..density..,fill=type))+
-  geom_density(alpha=0.8,color=NA)+
+  ggplot(aes(value,..density..))+
+  geom_density(alpha=0.8,color=NA,fill='gray50')+
   # geom_density_ridges(alpha=0.8,scale=1.4)+
   # stat_density_ridges(geom="density_ridges_gradient",calc_ecdf='true',quantiles=4,alpha=0.8,scale=1)+
   # scale_fill_viridis_d(name="quantiles",alpha=0.8)+
   geom_vline(xintercept=0,linetype=2)+
   geom_vline(aes(xintercept=median_int),color='black')+
-  scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
-  scale_color_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  # scale_fill_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
+  # scale_color_manual(values=c("darkorange1","orangered2","darkorchid1","palegreen3","skyblue1"),name="")+
   guides(fill=F,color=F)+
   xlim(-1.5,1.5)+
   labs(x="Interaction strength",y="Probability density",title="Distribution of Interaction Strengths by Type")+
@@ -1038,8 +1114,8 @@ interaction_distribution_by_type <- all.mod.coeffs.long %>%
 
 interaction_distribution_by_type
 
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_density.png",plot=interaction_distribution_by_type)
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_density.pdf",plot=interaction_distribution_by_type)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_density.png",plot=interaction_distribution_by_type)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_density.pdf",plot=interaction_distribution_by_type)
 ```
 
 ***
@@ -1068,9 +1144,9 @@ ymac_ints_ts <- ymac_ints_ts %>% left_join(npgo_ts,by=c('period','date_str'))
 
 ymac_ints_plot <- ggplot(ymac_ints_ts,aes(date_str,meanval,col=plotting))+
   geom_line(size=1.5)+
-  scale_color_npg()+
-  annotate("rect",xmin=as_date("1999-01-01"),xmax=as_date("2001-01-01"),ymin=-1.3,ymax=1.3,fill=NA,col='black')+
-  annotate("rect",xmin=as_date("2004-01-01"),xmax=as_date("2006-01-01"),ymin=-1.3,ymax=1.3,fill=NA,col='black')+
+  scale_color_manual(values=cols8[c(2,3,5,6)])+
+  annotate("rect",xmin=as_date("2000-01-01"),xmax=as_date("2002-01-01"),ymin=-1.9,ymax=1.4,fill=NA,col='black')+
+  annotate("rect",xmin=as_date("2004-06-01"),xmax=as_date("2006-06-01"),ymin=-1.9,ymax=1.4,fill=NA,col='black')+
   geom_hline(yintercept=0,linetype=2)+
   labs(x="",y="Effect on Macrocystis <1m",color="Interacting\nSpecies")
 ymac_ints_npgo_plot <- ymac_ints_plot+
@@ -1079,37 +1155,32 @@ ymac_ints_npgo_plot <- ymac_ints_plot+
   theme(axis.title=element_text(size=10),
         axis.text=element_text(size=10))
 ymac_ints_npgo_plot
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.png",plot=ymac_ints_npgo_plot,h=4,w=8)
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.pdf",plot=ymac_ints_npgo_plot,h=4,w=8)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.png",plot=ymac_ints_npgo_plot,h=4,w=8)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ymac_ints_npgo.pdf",plot=ymac_ints_npgo_plot,h=4,w=8)
 ```
 
 ```{r}
 # Make zoomed boxes contrasting lowest and highest NPGO with these species interactions
-library(rsvg)
-lam_img <- magick::image_read_svg(here('icons', "laminaria-transparent.svg"))
-pter_img <- magick::image_read_svg(here('icons', "pterygophora-transparent.svg"))
-mac_img <- magick::image_read_svg(here('icons', "macrocystis-transparent.svg"))
-ymac_img <- magick::image_read_svg(here('icons', "sporophyte-transparent.svg"))
 
 npgo_high_ymac <- ymac_ints_ts %>% 
-  filter(year(date_str)==2000) %>% 
+  filter(period==41) %>% 
   ggplot(aes(plotting,meanval,fill=plotting))+
   geom_col()+
   geom_hline(yintercept=0)+
-  scale_fill_npg(guide='none')+
-  scale_y_continuous(limits=c(-1.3,0.7))+
+  scale_fill_manual(values=cols8[c(2,3,5,6)],guide="none")+
+  scale_y_continuous(limits=c(-2,0.7))+
   labs(x="",y="Effect on Macrocystis <1m")+
   theme(axis.title=element_text(size=10),
         axis.text=element_text(size=10),
         panel.grid.major = element_blank(),
         panel.grid.minor=element_blank())
 npgo_low_ymac <- ymac_ints_ts %>% 
-  filter(year(date_str)==2005,month(date_str)==7) %>% 
+  filter(period==51) %>% 
   ggplot(aes(plotting,meanval,fill=plotting))+
   geom_col()+
   geom_hline(yintercept=0)+
-  scale_fill_npg(guide='none')+
-  scale_y_continuous(limits=c(-1.3,0.7))+
+  scale_fill_manual(values=cols8[c(2,3,5,6)],guide="none")+
+  scale_y_continuous(limits=c(-2,0.7))+
   labs(x="",y="Effect on Macrocystis <1m")+
   theme(axis.title=element_text(size=10),
         axis.text=element_text(size=10),
@@ -1209,10 +1280,27 @@ find_neighbors <- function(int_df,model,eff,num_neighbors=30) {
 We can use the state-space neighborhood-averaging method to look at the environmental context underlying shifts in the relationships between *Macrocystis*, *Pterygophora*, and *Laminaria*. This is a subset of the CCM interaction network shown above, picking out the relationships between the four algae variables included in the analysis.
 
 ```{r mei effect on ints,echo=FALSE}
-connect.mat.algae <- t(westend.ptot.mat)[c('lam','mac','pter','ymac'),c('lam','mac','pter','ymac')]
+connect.mat.algae <- tidyr::crossing(predictee=c('lam','mac','pter','ymac'),predictor=c('lam','mac','pter','ymac')) %>% 
+  left_join(westend.xmap_rast %>% dplyr::select(predictee,predictor,rho)) %>% 
+  mutate(connected=ifelse(is.na(rho),0,1)) %>% 
+  dplyr::select(predictee,predictor,connected) %>% 
+  pivot_wider(names_from = "predictee",values_from = "connected") %>% 
+  dplyr::select(-1) %>% 
+  as.matrix()
+
 # edges (arrows) weighted based on CCM rho value
-edge.weight.mat.algae <- t(westend.xmap_mat)[c('lam','mac','pter','ymac'),c('lam','mac','pter','ymac')]
+edge.weight.mat.algae <- tidyr::crossing(predictee=c('lam','mac','pter','ymac'),predictor=c('lam','mac','pter','ymac')) %>% 
+  left_join(westend.xmap_rast %>% dplyr::select(predictee,predictor,rho)) %>% 
+  dplyr::select(predictee,predictor,rho) %>% 
+  pivot_wider(names_from = "predictee",values_from = "rho") %>% 
+  dplyr::select(-1) %>% 
+  as.matrix()
 edge.weight.mat.algae[is.na(edge.weight.mat.algae)]<-0
+
+# connect.mat.algae <- t(westend.ptot.mat)[c('lam','mac','pter','ymac'),c('lam','mac','pter','ymac')]
+# # edges (arrows) weighted based on CCM rho value
+# edge.weight.mat.algae <- t(westend.xmap_mat)[c('lam','mac','pter','ymac'),c('lam','mac','pter','ymac')]
+# edge.weight.mat.algae[is.na(edge.weight.mat.algae)]<-0
 
 names.algae <- map_chr(colnames(connect.mat.algae), function(x) as.character(namekey$plotting[match(x,namekey$short)]))
 
@@ -1234,14 +1322,14 @@ edge.cols.algae[edge.cols.algae==101] <- 100
 edge.cols.algae <- edge.pal[edge.cols.algae]
 
 # Edge labels
-E(g3)$name
-
-curves.algae <- rep(0,length(edge.weights.algae))
-curves.algae[c(1,2,3,8)] <- -0.3
+# E(g3)$name
+# 
+# curves.algae <- rep(0,length(edge.weights.algae))
+# curves.algae[c(1,2,3,8)] <- -0.3
 
 # png("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_algae_network.png",height=500,width=500)
 # pdf("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/ccm_algae_network.pdf")
-plot(g3,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves.algae, margin=0,vertex.size=40,rescale=T,edge.lty=1,edge.color=edge.cols.algae,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="",edge.label=c('d','e','b','h','g','a','f','c'),edge.label.color='black',edge.label.cex=1.2)
+plot(g3,asp=0.8, vertex.label.color="black",vertex.label.family="sans", vertex.label.cex=0.8, edge.arrow.size=0.8,edge.arrow.width=0.8,vertex.label.font=2, vertex.shape="circle", edge.curved=curves.algae, margin=0,vertex.size=40,rescale=T,edge.lty=1,edge.color=edge.cols.algae,layout=layout_in_circle,vertex.color=vert.cols,vertex.frame.color="black",main="",edge.label=c('d','e','b','h','g','a','f','c','i','j'),edge.label.color='black',edge.label.cex=1.2)
 # dev.off()
 ```
 
@@ -1259,7 +1347,7 @@ causal_contexts <- algae.causal.ints %>%
   mutate(mod_plotting_name = namekey$plotting[match(mod,namekey$short)],
          effect_plotting_name= namekey$plotting[match(effect,namekey$short)])
 
-breaks <- seq(-2.4,2.4,by=0.3)
+# breaks <- seq(-2.4,2.4,by=0.3)
 
 algae_causal_contexts<- causal_contexts %>% 
   filter(effect %in% c('mac','ymac','pter','lam'))
@@ -1437,17 +1525,18 @@ npgo_sgh_plot <- npgo_sgh %>%
   ggplot(aes(eff_npgo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
   geom_point(alpha=0.3,size=0.5)+
   geom_smooth(se=F)+
-  scale_color_manual(values=cols4A)+
-  scale_fill_manual(values=cols4A)+
+  scale_color_manual(values=cols8[c(1,2,3,4,5,6)])+
+  scale_fill_manual(values=cols8[c(1,2,3,4,5,6)])+
   # scale_color_npg()+
   # scale_fill_npg()+
   geom_hline(yintercept = 0,linetype=2)+
   geom_vline(xintercept = 0,linetype=2)+
-  xlim(NA,1.5)+ylim(NA,1.5)+
+  # xlim(NA,1.5)+
+  # ylim(NA,1.5)+
   labs(x="Effect of NPGO",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
   theme(panel.grid.major = element_blank(),
         panel.grid.minor=element_blank(),
-        legend.position = c(0.85,0.75),
+        legend.position = c(0.8,0.65),
         axis.text.x=element_text(size=10),
         axis.text.y=element_text(size=10),
         legend.text = element_text(size=10),
@@ -1460,9 +1549,15 @@ npgo_sgh_fig<- ggdraw()+
   draw_image(lam_img,x=0.4,y=0.7,width=0.25,height=0.25,clip = 'on')+
   draw_image(pter_img,x=0.5,y=0.7,width=0.25,height=0.25,clip = 'on')
 
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig.png",plot=npgo_sgh_fig,h=4,w=6)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig.png",plot=npgo_sgh_fig,h=4,w=6)
 
-# npgo_sgh_plot
+grDevices::cairo_pdf("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig.pdf",
+                     width=unit(6, "in"),height=unit(4,"in"))
+npgo_sgh_fig
+dev.off()
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig.pdf",plot=npgo_sgh_fig,h=4,w=6)
+
+# npgo_sgh_fig
 ```
 
 Effects on *Macrocystis* recruitment
@@ -1485,15 +1580,15 @@ npgo_sgh_ymac_plot <- npgo_sgh_ymac %>%
   ggplot(aes(eff_npgo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
   geom_point(alpha=0.3,size=0.5)+
   geom_smooth(se=F)+
-  scale_color_manual(values=cols3A)+
-  scale_fill_manual(values=cols3A)+
+  scale_color_manual(values=cols8[c(2,3,5,6)])+
+  scale_fill_manual(values=cols8[c(2,3,5,6)])+
   geom_hline(yintercept = 0,linetype=2)+
   geom_vline(xintercept = 0,linetype=2)+
-  xlim(NA,0.5)+ylim(NA,0.5)+
+  # xlim(NA,0.5)+ylim(NA,0.5)+
   labs(x="Effect of NPGO on Recruitment",y="\u2190 Competition or Facilitation \u2192",col="Interaction",fill="Interaction")+
   theme(panel.grid.major = element_blank(),
         panel.grid.minor=element_blank(),
-        legend.position = c(0.85,0.8),
+        legend.position = c(0.8,0.8),
         axis.text.x=element_text(size=10),
         axis.text.y=element_text(size=10),
         legend.text = element_text(size=10),
@@ -1510,7 +1605,12 @@ npgo_sgh_ymac_fig<- ggdraw()+
 
 fig5 <- plot_grid(npgo_sgh_fig,npgo_sgh_ymac_fig,nrow=2,labels = 'auto')
 
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig5.png",plot=fig5,h=8,w=6)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig5.png",plot=fig5,h=8,w=6)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig5.pdf",plot=fig5,h=8,w=6)
+grDevices::cairo_pdf("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/npgo_sgh_fig5.pdf",
+                     width=unit(6, "in"),height=unit(8,"in"))
+fig5
+dev.off()
 
 ```
 
@@ -1535,8 +1635,8 @@ pdo_sgh_plot <- pdo_sgh %>%
   ggplot(aes(eff_pdo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
   geom_point(alpha=0.3,size=0.5)+
   geom_smooth(se=F)+
-  scale_color_manual(values=cols4A)+
-  scale_fill_manual(values=cols4A)+
+  scale_color_manual(values=cols8[c(1,2,3,4,5,6)])+
+  scale_fill_manual(values=cols8[c(1,2,3,4,5,6)])+
   geom_hline(yintercept = 0,linetype=2)+
   geom_vline(xintercept = 0,linetype=2)+
   xlim(NA,1.5)+ylim(NA,1.5)+
@@ -1565,8 +1665,8 @@ pdo_sgh_ymac_plot <- pdo_sgh_ymac %>%
   ggplot(aes(eff_pdo,value_avg,col=int_plotting_name,fill=int_plotting_name))+
   geom_point(alpha=0.3,size=0.5)+
   geom_smooth(se=F)+
-  scale_color_manual(values=cols3A)+
-  scale_fill_manual(values=cols3A)+
+  scale_color_manual(values=cols8[c(2,3,5,6)])+
+  scale_fill_manual(values=cols8[c(2,3,5,6)])+
   geom_hline(yintercept = 0,linetype=2)+
   geom_vline(xintercept = 0,linetype=2)+
   # xlim(NA,0.5)+ylim(NA,0.5)+
@@ -1606,8 +1706,8 @@ purp_sgh_plot <- purp_sgh %>%
   ggplot(aes(eff_purp,value_avg,col=int_plotting_name,fill=int_plotting_name))+
   geom_point(alpha=0.3,size=0.5)+
   geom_smooth(se=F)+
-  scale_color_manual(values=cols4A)+
-  scale_fill_manual(values=cols4A)+
+  scale_color_manual(values=cols8[c(1,2,3,4,5,6)])+
+  scale_fill_manual(values=cols8[c(1,2,3,4,5,6)])+
   geom_hline(yintercept = 0,linetype=2)+
   geom_vline(xintercept = 0,linetype=2)+
   xlim(NA,1.5)+ylim(NA,1.5)+
@@ -1636,8 +1736,8 @@ purp_sgh_ymac_plot <- purp_sgh_ymac %>%
   ggplot(aes(eff_purp,value_avg,col=int_plotting_name,fill=int_plotting_name))+
   geom_point(alpha=0.3,size=0.5)+
   geom_smooth(se=F)+
-  scale_color_manual(values=cols3A)+
-  scale_fill_manual(values=cols3A)+
+  scale_color_manual(values=cols8[c(1,2,3,4,5,6)])+
+  scale_fill_manual(values=cols8[c(1,2,3,4,5,6)])+
   geom_hline(yintercept = 0,linetype=2)+
   geom_vline(xintercept = 0,linetype=2)+
   # xlim(NA,0.5)+ylim(NA,0.5)+
@@ -1653,7 +1753,7 @@ purp_sgh_ymac_plot <- purp_sgh_ymac %>%
 purp_sgh_fig <- plot_grid(purp_sgh_plot,purp_sgh_ymac_plot,nrow=2)
 
 purp_sgh_fig
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/purp_sgh_fig.png",plot=purp_sgh_fig,h=8,w=6)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/purp_sgh_fig.png",plot=purp_sgh_fig,h=8,w=6)
 
 ```
 
@@ -1668,7 +1768,7 @@ For each species' model, we begin with the full models used in the main analysis
 ```{r backwards selection fxn}
 back_select_multivariate_model <- function(sitedat=westend,libsegs=westend.segs,predsegs=libsegs,species,causalvars,...) {
   ptm <- proc.time()
-  nsteps <- length(causalvars)
+  nsteps <- min(length(causalvars),7)
   back.mod.table <- tibble(ex.var=character(nsteps),rho=numeric(nsteps),theta=numeric(nsteps))
   spp.bestE <- westend.bestE[[species]]
   
@@ -1681,10 +1781,10 @@ back_select_multivariate_model <- function(sitedat=westend,libsegs=westend.segs,
     ungroup() %>% 
     dplyr::select(contains('lag'))
   
-  sitedat <- sitedat %>% bind_cols(lagsblock)
+  sitedat_mod <- sitedat %>% bind_cols(lagsblock) %>% dplyr::select(-site,-period)
   
   # Run full model, including all CCM-validated causal variables
-  full.mod <- block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(libsegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T)
+  full.mod <- suppressWarnings(block_lnlp(sitedat_mod,lib=as.matrix(libsegs),pred=as.matrix(libsegs),columns=causalvars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T))
   back.mod.table$ex.var[1] <- "none"
   back.mod.table$rho[1] <- max(full.mod$rho,na.rm=T)
   back.mod.table$theta[1] <- full.mod$theta[full.mod$rho==max(full.mod$rho,na.rm=T)]
@@ -1704,9 +1804,22 @@ back_select_multivariate_model <- function(sitedat=westend,libsegs=westend.segs,
       temp_vars <- poss_vars[-j]
       # if the number of variables used drops below the species' best embedding dimension, fill with univariate lags
       bestEdiff <- spp.bestE-length(poss_vars)
-      if(bestEdiff>0) temp_vars <- c(temp_vars,paste0('lag',1:bestEdiff))
+      temp_sitedat <- sitedat
+      temp_libsegs <- libsegs
+      if(bestEdiff>0) {
+        temp_vars <- c(temp_vars,paste0('lag',1:bestEdiff))
+        temp_sitedat <- sitedat %>% bind_cols(lagsblock) %>% dplyr::select(c(site,temp_vars,species)) %>% drop_na()
+        temp_libsegs <- temp_sitedat %>%
+          ungroup() %>%
+          mutate(ind = row_number()) %>% 
+          group_by(site) %>%
+          summarise(first=first(ind),last=last(ind)) %>% 
+          ungroup() %>% 
+          dplyr::select(-site)
+      }
+      temp_sitedat <- temp_sitedat %>% dplyr::select(-site)
       
-      temp <- block_lnlp(sitedat,lib=as.matrix(libsegs),pred=as.matrix(libsegs),columns=temp_vars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T)
+      temp <- suppressWarnings(block_lnlp(temp_sitedat,lib=as.matrix(temp_libsegs),pred=as.matrix(temp_libsegs),columns=temp_vars,target_column = species,theta = c(0, 1e-04, 3e-04, 0.001,0.003, 0.01, 0.1, 0.5, 1, 2, 4, 6,8), num_neighbors=0,method="s-map",silent=T))
       out.rho[j] <- max(temp$rho)
       out.theta[j] <-  temp$theta[temp$rho==max(temp$rho)][1]
     }
@@ -1735,7 +1848,7 @@ back_select_multivariate_model <- function(sitedat=westend,libsegs=westend.segs,
   stop.selection <- back.mod.table %>% mutate(last_rho=lag(rho,1),stop=rho<last_rho)
   which.max.rho <- max(match(TRUE,stop.selection$stop)-1,1)
   selected.vars <- setdiff(causalvars,back.mod.table$ex.var[1:which.max.rho])
-  selected.model <- smap_multi(sitedat=westend,libsegs=westend.segs,species=species,causalvars=selected.vars)
+  selected.model <- suppressWarnings(smap_multi(sitedat=westend.thin,libsegs=westend.segs,species=species,causalvars=selected.vars))
   
   return(list(selection.table=back.mod.table,selection.plot=plot.out,selected.model=selected.model))
 }
@@ -1743,7 +1856,11 @@ back_select_multivariate_model <- function(sitedat=westend,libsegs=westend.segs,
 
 ```{r back select,warning=F,message=F,fig.height=8,fig.width=8,fig.cap="Backwards model selection for multivariate models. The selection process for each species' model began with the full suite of causal variables used in the main analysis. Then, variables were sequentially removed based on whether the exclusion of that variable improved model predictive skill. Note the different scales on the x and y axes because not all model selections began with the same number of variables."}
 # Apply backwards selection to all multivariate models
-backwards_selection <- purrr::map(list("mac","purp","lam","ymac","red","pter"),function(x) {
+library(future)
+library(furrr)
+future::plan(multisession)
+
+backwards_selection <- furrr::future_map(list("mac","purp","lam","ymac","red","pter"),function(x) {
   back_select_multivariate_model(species=x,causalvars=westend.causal.vars[[x]])
 })
 back_selected_tables <- purrr::map(backwards_selection,function(x){
@@ -1758,7 +1875,7 @@ back_selected_models <- purrr::map(backwards_selection,function(x){
 names(back_selected_tables)<-names(back_selected_plots) <- names(back_selected_models) <- names(backwards_selection) <- c("mac","purp","lam","ymac","red","pter")
 back_select_allplots <-plot_grid(plotlist=back_selected_plots,ncol=2)
 back_select_allplots
-
+# 
 # ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/back_select_allplots.pdf",back_select_allplots,h=8,w=8)
 # ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/back_select_allplots.png",back_select_allplots,h=8,w=8)
 
@@ -1807,8 +1924,8 @@ all.selected.mod.coeffs.plot.box <- all.selected.mod.coeffs.long %>%
   theme(strip.text = element_blank())
 
 all.selected.mod.coeffs.plot.box
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_spp_coeffs.png",plot=all.selected.mod.coeffs.plot.box,height=8,width=7.5)
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_spp_coeffs.pdf",plot=all.selected.mod.coeffs.plot.box,height=8,width=7.5)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_spp_coeffs.png",plot=all.selected.mod.coeffs.plot.box,height=8,width=7.5)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_spp_coeffs.pdf",plot=all.selected.mod.coeffs.plot.box,height=8,width=7.5)
 ```
 
 
@@ -1845,8 +1962,8 @@ all.phys.selected.coeffs.plot <- all.selected.mod.coeffs.long %>%
         strip.text = element_blank())
 all.phys.selected.coeffs.plot
 
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_phys_coeffs.png",plot=all.phys.selected.coeffs.plot,height=8,width=7.5)
-# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_phys_coeffs.pdf",plot=all.phys.selected.coeffs.plot,height=8,width=7.5)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_phys_coeffs.png",plot=all.phys.selected.coeffs.plot,height=8,width=7.5)
+ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/all_select_phys_coeffs.pdf",plot=all.phys.selected.coeffs.plot,height=8,width=7.5)
 ```
 
 Displayed another way, the figure below shows the differences in a number of measures of interaction strength estimated in the full and backwards-selected models, respectively. With few exceptions (namely, some interactions with higher variance in the backwards-selected versus the full models), the two sets of models align closely on the mean, median, and standard deviation of estimated interactions, and have very similar proportions of positive versus negative values for any given interactions.
@@ -1900,8 +2017,8 @@ full_select_mod_comp_plot <- mod.full.selected.comp %>%
         legend.position = 'bottom',
         legend.text = element_text(size=12))
 full_select_mod_comp_plot
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/full_select_mod_comp.png",plot=full_select_mod_comp_plot,height=7,width=7.5)
-ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/full_select_mod_comp.pdf",plot=full_select_mod_comp_plot,height=7,width=7.5)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/full_select_mod_comp.png",plot=full_select_mod_comp_plot,height=7,width=7.5)
+# ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/full_select_mod_comp.pdf",plot=full_select_mod_comp_plot,height=7,width=7.5)
 ```
 
 Given this consistency of the full and backwards-selected models for all species, we can be confident that the choice of the particular variables to include in the multivariate S-maps is not causing spurious or inconsistent results for estimated species interactions, despite the exclusion of some variables in the backwards-selected models.
@@ -2004,7 +2121,5 @@ fd_interaction_distribution_by_type
 ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_fd_models_density.png",plot=fd_interaction_distribution_by_type)
 ggsave("C:/Users/Owen.Liu/Documents/github/EDM_SNI/plots/int_dist_by_type_fd_models_density.pdf",plot=fd_interaction_distribution_by_type)
 ```
-
-
 
 ## References

@@ -20,6 +20,21 @@ source(here::here('data','data preparation scripts','benthic_data_preparation.R'
 
 westend <- westend.norm %>% left_join(phys.dat.norm,by="period")
 
+# Linearly interpolate missing values
+fill_vec1<- function(arrvec){
+  x <- 1:63
+  z <- approx(x,arrvec,xout=x,method="linear")$y
+  z
+}
+
+# interpolate 
+
+westend <- westend %>% 
+  group_by(site) %>% 
+  arrange(period) %>% 
+  mutate(across(lam:sst,fill_vec1)) %>% 
+  ungroup() %>% arrange(site,period)
+
 # Remove excess data from the workspace
 rm(list=setdiff(ls(), 'westend'))
 

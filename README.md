@@ -15,28 +15,28 @@ Please contact the author with any questions.
 The required packages are loaded at the beginning of each script. Once packages are installed, the entire analysis should take less than five minutes to run (tested using Windows 7 x64 and R version `3.5.1`). In the analysis in the manuscript, the following package versions were used for analysis and data visualization:
 
 ```
-rEDM_0.7.4
-here_0.1
-ncdf4_1.16
-knitr_1.21
-kableExtra_0.9.0
+rEDM_1.11.0
+here_1.0.1
+ncdf4_1.19
+knitr_1.38
+kableExtra_1.3.4
 ggsci_2.9
-igraph_1.2.2
+igraph_1.3.0
 RANN_2.6.1
 gridExtra_2.3
-plot3D_1.1.1
-quantreg_5.38
-fields_9.6
-tidyverse_1.2.1
-  ggplot2_3.1.0
-  purrr_0.2.5
-  tibble_2.0.0
-  tidyr_0.8.2
-  stringr_1.3.1
-  dplyr_0.7.8
-  readr_1.3.1
-  forcats_0.3.0
-  lubridate_1.7.4
+plot3D_1.4
+quantreg_5.88
+fields_13.3
+tidyverse_1.3.1
+ggplot2_3.3.5
+purrr_0.3.4
+tibble_3.1.6
+tidyr_1.2.0
+stringr_1.4.0
+dplyr_1.0.8
+readr_2.1.2
+forcats_0.5.1
+lubridate_1.8.1
 ```
 
 ## Installation of packages

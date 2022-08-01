@@ -162,11 +162,16 @@ wavesboth <- wavesdf %>%
 
 source(here('data','data preparation scripts','process_sst_data.R'))
 
+odd_period_mean <- noaa.sst %>% filter(month%in%c(6:11)) %>% pull(mean.monthly.sst) %>% mean()
+even_period_mean <- noaa.sst %>% filter(month %in%c(12,1:5)) %>% pull(mean.monthly.sst) %>% mean()
+sst_fill <- period.key %>% mutate(sst.fill=ifelse(month%in%c(6:11),odd_period_mean,even_period_mean))
+
 sst.per <- noaa.sst %>%
   
   # Use the periods key to assign periods to each month, and remove irrelevant data
-  left_join(period.key,by=c("year"="year","month"="month")) %>%
+  full_join(sst_fill,by=c("year"="year","month"="month")) %>%
   filter(!is.na(period)) %>%
+  mutate(mean.monthly.sst=coalesce(mean.monthly.sst,sst.fill)) %>% 
   
   # For each period, average the SST value to make just one value for each period
   group_by(period) %>%
